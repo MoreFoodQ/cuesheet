@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="CueSheet logo">
+  <title>CueSheet</title>
+  <defs>
+    <filter id="rough" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="7"/>
+    </filter>
+    <filter id="rough2" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.045" numOctaves="2" seed="23" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="6"/>
+    </filter>
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="1" seed="3" result="g"/>
+      <feColorMatrix in="g" type="matrix" values="0 0 0 0 0.45  0 0 0 0 0.36  0 0 0 0 0.25  0 0 0 0.10 0"/>
+      <feComposite in2="SourceGraphic" operator="in"/>
+    </filter>
+  </defs>
+
+  <!-- 紙卡 -->
+  <g transform="rotate(-3 256 256)">
+    <rect x="44" y="52" width="424" height="408" rx="26" fill="#F5ECDC" filter="url(#rough)"/>
+    <rect x="44" y="52" width="424" height="408" rx="26" fill="#F5ECDC" filter="url(#grain)"/>
+    <rect x="44" y="52" width="424" height="408" rx="26" fill="none" stroke="#221C16" stroke-width="7" filter="url(#rough)"/>
+    <rect x="48" y="57" width="420" height="402" rx="28" fill="none" stroke="#221C16" stroke-width="2.5" opacity=".55" filter="url(#rough2)"/>
+  </g>
+
+  <!-- 三條譜線＝三個額度表 -->
+  <g stroke-linecap="round" filter="url(#rough2)">
+    <line x1="138" y1="210" x2="292" y2="210" stroke="#221C16" stroke-width="4" opacity=".35"/>
+    <line x1="138" y1="256" x2="292" y2="256" stroke="#221C16" stroke-width="4" opacity=".35"/>
+    <line x1="138" y1="302" x2="292" y2="302" stroke="#221C16" stroke-width="4" opacity=".35"/>
+    <line x1="140" y1="210" x2="272" y2="210" stroke="#3E9A62" stroke-width="20"/>
+    <line x1="140" y1="256" x2="214" y2="256" stroke="#E4A33A" stroke-width="20"/>
+    <line x1="140" y1="302" x2="160" y2="302" stroke="#D4503F" stroke-width="20"/>
+  </g>
+
+  <!-- Q 的圓（墨線，畫兩次做出手繪感） -->
+  <g fill="none" stroke="#221C16" stroke-linecap="round">
+    <circle cx="215" cy="256" r="120" stroke-width="22" filter="url(#rough)"/>
+    <circle cx="219" cy="252" r="126" stroke-width="5" opacity=".5" filter="url(#rough2)"/>
+  </g>
+
+  <!-- Q 的尾巴＝指揮棒 -->
+  <g stroke-linecap="round" filter="url(#rough)">
+    <line x1="276" y1="300" x2="436" y2="430" stroke="#221C16" stroke-width="9"/>
+    <line x1="270" y1="294" x2="300" y2="319" stroke="#221C16" stroke-width="26"/>
+    <line x1="268" y1="292" x2="296" y2="315" stroke="#B9824A" stroke-width="16"/>
+  </g>
+
+  <!-- 起拍記號 -->
+  <g stroke="#E4A33A" stroke-width="9" stroke-linecap="round" filter="url(#rough2)">
+    <line x1="392" y1="104" x2="392" y2="150"/>
+    <line x1="369" y1="127" x2="415" y2="127"/>
+    <line x1="376" y1="111" x2="408" y2="143"/>
+    <line x1="408" y1="111" x2="376" y2="143"/>
+  </g>
+</svg>
