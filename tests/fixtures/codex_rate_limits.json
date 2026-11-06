@@ -1,0 +1,19 @@
+{
+  "ordinaryUsageAllowed": true,
+  "rateLimitsByLimitId": {
+    "codex": {
+      "limitId": "codex",
+      "primary": {"usedPercent": 6, "windowDurationMins": 300, "resetsAt": 1793985062},
+      "secondary": {"usedPercent": 89, "windowDurationMins": 10080, "resetsAt": 1794237517},
+      "planType": "plus",
+      "rateLimitReachedType": null
+    }
+  },
+  "rateLimitResetCredits": {
+    "availableCount": 2,
+    "credits": [
+      {"status": "available", "expiresAt": 1796060617},
+      {"status": "available", "expiresAt": 1796161101}
+    ]
+  }
+}
