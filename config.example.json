@@ -1,0 +1,5 @@
+{
+  "claude_paths": ["%USERPROFILE%\\.local\\bin\\claude.exe"],
+  "codex_paths": [],
+  "agy_paths": ["%LOCALAPPDATA%\\agy\\bin\\agy.exe"]
+}

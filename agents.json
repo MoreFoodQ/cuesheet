@@ -1,0 +1,45 @@
+{
+  "thresholds": {
+    "low_percent": 20,
+    "exhausted_percent": 1
+  },
+  "agents": [
+    {
+      "id": "claude",
+      "label": "Claude Code（主控）",
+      "provider": "claude",
+      "models": ["claude-opus-5-5"],
+      "buckets": ["five_hour", "seven_day"],
+      "optional_buckets": ["seven_day_opus"]
+    },
+    {
+      "id": "luna",
+      "label": "Luna（Codex gpt-6-luna）",
+      "provider": "codex",
+      "models": ["gpt-6-luna"],
+      "buckets": ["codex.5h", "codex.weekly"],
+      "note": "與 Codex 其他模型共用 codex 這組額度"
+    },
+    {
+      "id": "argon",
+      "label": "Gemini 4 Argon（agy）",
+      "provider": "gemini",
+      "models": ["gemini-4-argon-low", "gemini-4-argon-medium"],
+      "buckets": ["gemini-5h", "gemini-weekly", "gemini-argon-wtu-weekly"]
+    },
+    {
+      "id": "flash",
+      "label": "Gemini 3.8 Flash（agy）",
+      "provider": "gemini",
+      "models": ["gemini-3.8-flash-low", "gemini-3.8-flash-medium", "gemini-3.8-flash-high"],
+      "buckets": ["gemini-5h", "gemini-weekly"]
+    },
+    {
+      "id": "agy-3p",
+      "label": "agy 內的 Claude／GPT-OSS",
+      "provider": "gemini",
+      "models": ["claude-opus-5-5-medium", "claude-sonnet-5-5-medium", "gpt-oss-120b-medium"],
+      "buckets": ["3p-5h", "3p-weekly"]
+    }
+  ]
+}
