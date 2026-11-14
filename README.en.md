@@ -91,7 +91,7 @@ Each query writes `data/latest.json`, which Git ignores. Scripts that only need 
 }
 ```
 
-All times are UTC. `level` is one of `ok`, `low`, `exhausted`, `unknown`. `data_status` is `ok` for a live reading, `stale` for an old snapshot, and `unavailable` when nothing could be read. A `remaining_percent` of `null` means the value could not be read; the reason is in `notes` or in `providers.<name>.error`. `providers` holds every quota window for each agent.
+All times are UTC. `level` is one of `ok`, `low`, `exhausted`, `unknown`. `data_status` is `ok` for a live reading, `stale` for an old snapshot, and `unavailable` when nothing could be read. A `remaining_percent` of `null` means the value could not be read; the reason is in `notes` or in `providers.<name>.error`. `providers` holds every quota window for each agent. `unmapped_buckets` lists quota windows that no agent follows, and `models` holds the model check (same format as `cue models --json`, or `null` when model lists were not fetched).
 
 ## Claude Code skill
 
@@ -133,17 +133,84 @@ Agents with at least `min_remaining_percent` left go first, in order. Agents tha
 
 Exit codes: `0` success, `1` the task failed for a reason other than quota, `2` no agent had quota, `3` configuration error or the same task is already running. Every run is recorded in `data/relay/history.jsonl`, and each agent's full output is saved in `data/relay/logs/`.
 
-The default order uses three models of the same tier, all at medium reasoning effort:
+The models the relay uses are listed in `runners.json` in the repository. The default order uses three models of the same tier, all at medium reasoning effort:
 
-| Order | Agent | Command | What it can do unattended |
-|---|---|---|---|
-| 1 | `claude` | `claude -p --model claude-opus-5-5 --effort medium --permission-mode acceptEdits` | Read and write files in the working folder; shell commands that need approval are denied |
-| 2 | `sol` | `codex exec -s workspace-write -m gpt-6.1-sol -c model_reasoning_effort=medium -C <workdir>` | Run commands in a sandbox that can only write the working folder |
-| 3 | `argon` | `agy -p ... --model gemini-4-argon-medium --effort medium --mode accept-edits` | Read and write files; shell commands are denied |
+| Order | Agent | Platform | Model | What it can do unattended |
+|---|---|---|---|---|
+| 1 | `claude` | Claude Code | `claude-opus-5-5` | Read and write files in the working folder; shell commands that need approval are denied |
+| 2 | `sol` | Codex CLI | `gpt-6.1-sol` | Run commands in a sandbox that can only write the working folder |
+| 3 | `argon` | Antigravity `agy` | `gemini-4-argon-medium` | Read and write files; shell commands are denied |
 
-The three draw on separate quotas, so when one runs out the other two can still take over. `default_order` in `relay.json` changes the default.
+The three draw on separate quotas, so when one runs out the other two can still take over.
 
-Two more runners exist but are not in the default order: `luna` (Codex `gpt-6-luna`) shares the Codex quota with Sol, and `flash` (agy `gemini-3.8-flash-medium`) cannot do the work of the other three. Add them to a task's `order` if you want them. The `runners` section of `relay.json` can change arguments or add agents, and `quota_agent` sets which agent's quota a runner follows.
+`runners.json` also defines `luna` (Codex `gpt-6-luna`) and `flash` (agy `gemini-3.8-flash-medium`), which are not in the default order: Luna shares the Codex quota with Sol, and Flash cannot do the work of the other three. Add them to a task's `order` if you want them.
+
+If a model no longer exists (renamed or retired), each CLI returns a specific error. `cue relay` recognizes these errors, records the attempt as "model missing", hands the task to the next agent, and asks you to run `cue models`.
+
+## Changing models (runners.json and cue models)
+
+Platforms add, rename, and retire models over time. CueSheet keeps what it reads live separate from what you decide:
+
+| What | Where it comes from |
+|---|---|
+| Quota and reset times on all three platforms | Queried from each CLI on every run; quotas for new models appear automatically |
+| Which models share each Gemini group | Read live from the `agy` response, for example "Gemini 組（Hydrogen、Flash）" |
+| Models each platform offers now | Queried live by `cue models`: Claude Code `initialize`, Codex `model/list`, and `agy models` |
+| Which model and effort the relay uses | `runners.json`, set by you |
+| Which quota windows each agent follows | `agents.json`, set by you |
+
+### runners.json format
+
+```json
+{
+  "default_order": ["claude", "sol", "argon"],
+  "runners": {
+    "claude": {"platform": "claude", "model": "claude-opus-5-5", "effort": "medium", "family": "opus"},
+    "sol": {"platform": "codex", "model": "gpt-6.1-sol", "effort": "medium", "family": "sol"},
+    "argon": {"platform": "agy", "model": "gemini-4-argon-medium", "effort": "medium", "family": "argon"}
+  }
+}
+```
+
+- `platform`: `claude`, `codex`, or `agy`. CueSheet builds the unattended command for that platform.
+- `model`: the model id, exactly as `cue models` lists it.
+- `effort`: reasoning effort, optional. `agy` model ids already include an effort, such as `-medium`.
+- `family`: the model family, which `cue models` uses to find newer versions.
+- Your `relay.json` can also contain `runners`. List only the fields to change; the rest comes from `runners.json`. For example, to run one task on Fable: `"runners": {"claude": {"model": "claude-fable-5-2"}}`.
+
+### Checking and updating
+
+```powershell
+.\cue.ps1 models            # list models on all three platforms and check each model in runners.json
+.\cue.ps1 models --update   # write newer versions from the same family back to runners.json
+.\cue.ps1 models --json     # print JSON
+```
+
+Each relay model gets one of four states: `正常` (ok), `可升級` (a newer version of the same family exists), `不存在` (missing; the newest version of the same family is shown), and `未知` (the platform's model list could not be read). For Codex models, the reasoning effort is checked against the efforts the model supports.
+
+`--update` only moves to a newer version of the same family, for example `gpt-6-sol` to `gpt-6.1-sol` or `claude-opus-4-8` to `claude-opus-5-5`. The family and version come from the model id (`claude-<family>-<version>`, `gpt-<version>-<family>`, `gemini-<version>-<family>-<effort>`), and the highest version wins. The changes are printed, and `runners.json` is in Git, so a wrong change can be reverted.
+
+### Alerts during normal quota checks
+
+Each `cue` run also fetches the model lists in the background, at no quota cost and in parallel with the quota check. The "需要注意" (needs attention) section at the end lists:
+
+- Quota windows that no agent follows, usually a new model's own quota (such as Claude's weekly Fable quota).
+- New models. CueSheet records the models it has seen in `data/models_seen.json` and flags a model for 7 days after it first appears. The first run only records the baseline.
+- Relay models that are missing, can be upgraded, or do not support the configured effort.
+
+Add `--no-models` to skip the model lists. They are also skipped with `--agent` or `--only`.
+
+### Updating CueSheet yourself
+
+1. Run `.\cue.ps1 models` and look for relay models marked `不存在` or `可升級`.
+2. For a newer version of the same family, run `.\cue.ps1 models --update`.
+3. To switch to a different family (for example Argon to Hydrogen), edit `model` and `family` in `runners.json`, copying the model id from `cue models`.
+4. If a new model has its own quota, add an agent to `agents.json` with the quota id from `providers` in `cue --json`. To make a relay runner follow that quota, add `"quota_agent": "<agent id>"` to its entry in `runners.json`.
+5. Run `.\cue.ps1 relay <task> --dry-run` to check the command.
+
+### Not done yet
+
+`cue models` only finds newer versions within a family. Deciding which models in different families are of the same tier (for example, whether Hydrogen can replace Argon) is still up to you. A more reliable approach is to match models by score ranges on public leaderboards or benchmarks, which is the planned next step.
 
 Things to keep in mind when writing tasks:
 
@@ -173,6 +240,8 @@ Last tested with Claude Code 2.1.304, codex-cli 0.164.0, and `agy` on 2026-11-06
 
 `agents.json` maps agents to quota windows and sets the low and exhausted thresholds. The included agents are `claude`, `sol`, `luna`, `argon`, `flash`, and `agy-3p`. Windows listed under `buckets` must exist in the provider's output; windows under `optional_buckets` count only when present.
 
+`runners.json` sets the relay models and the default order; see "Changing models" above.
+
 If a CLI is not on `PATH`, copy `config.example.json` to `config.json` and set its location. Git ignores `config.json`.
 
 ## Development
@@ -181,7 +250,7 @@ If a CLI is not on `PATH`, copy `config.example.json` to `config.json` and set i
 python -m unittest discover -s tests
 ```
 
-The tests parse recorded CLI responses in `tests/fixtures`, and the relay tests simulate exhausted quota with fake agents. No AI CLI is called. Each agent has its own module in `cuesheet/` (`claude.py`, `codex.py`, `gemini.py`), so a change in one CLI's output usually needs a fix in one file.
+The tests parse recorded CLI responses and model lists, and the relay tests simulate exhausted quota with fake agents. No AI CLI is called. Each agent has its own module in `cuesheet/` (`claude.py`, `codex.py`, `gemini.py`), so a change in one CLI's output usually needs a fix in one file.
 
 ## Related projects
 

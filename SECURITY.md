@@ -10,6 +10,14 @@ CueSheet only runs the CLIs you already have installed and reads what they repor
 | `codex app-server` | Sends `initialize` and `account/rateLimits/read`. No other method is called. |
 | `agy -p "/usage" --output-format json` | Runs the read-only `/usage` command. |
 
+To list models (`cue models`, and in the background of each `cue` run), CueSheet also runs:
+
+| Command | Purpose |
+|---|---|
+| `claude -p --input-format stream-json ... --no-session-persistence --strict-mcp-config` | Sends one `initialize` control request and reads the model list. No prompt is sent. |
+| `codex app-server` | Sends `initialize` and `model/list`. |
+| `agy models` | Lists available models. |
+
 Each process is stopped once it has answered. The CLIs contact their own services with their own sign-in. CueSheet makes no network requests of its own.
 
 ## What CueSheet reads
@@ -23,6 +31,8 @@ CueSheet does not read credential files, OAuth tokens, API keys, keychains, or b
 ## What CueSheet writes
 
 - `data/latest.json` in the repository. It contains quota percentages, reset times, plan names, and the number of Codex reset credits. Git ignores it.
+- `data/models_seen.json` in the repository: model ids and the date each was first seen. Git ignores it.
+- `runners.json`, only when you run `cue models --update`.
 - `~/.claude/skills/cuesheet/SKILL.md`, only when you run `install-skill.ps1`.
 
 ## cue relay

@@ -2,6 +2,23 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-11-14
+
+### Added
+
+- `cue models`: lists the models each platform offers right now (Claude Code `initialize`, Codex `model/list`, `agy models`) and checks every relay model in `runners.json` for missing models, newer versions in the same family, and unsupported reasoning effort. `--update` writes newer same-family versions back to `runners.json`.
+- Each `cue` run fetches the model lists in parallel and lists, under "需要注意", quota windows no agent follows, models first seen in the last 7 days, and relay model problems.
+- `cue relay` recognizes "model not found" errors from all three CLIs and hands the task to the next agent.
+
+### Changed
+
+- Relay models moved from code to `runners.json` (platform, model, effort, family). `relay.json` can override single fields.
+- Gemini group names are built from the model list in the `agy` response instead of a fixed label.
+
+### Fixed
+
+- Gemini quota windows that have not started yet are shown as reported, with a note.
+
 ## [0.3.0] - 2026-11-14
 
 ### Changed
@@ -34,6 +51,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 - Claude Code skill and `install-skill.ps1`.
 - Unit tests on recorded CLI responses and a GitHub Actions workflow for Windows and Linux.
 
+[0.4.0]: https://github.com/MoreFoodQ/cuesheet/releases/tag/v0.4.0
 [0.3.0]: https://github.com/MoreFoodQ/cuesheet/releases/tag/v0.3.0
 [0.2.0]: https://github.com/MoreFoodQ/cuesheet/releases/tag/v0.2.0
 [0.1.0]: https://github.com/MoreFoodQ/cuesheet/releases/tag/v0.1.0

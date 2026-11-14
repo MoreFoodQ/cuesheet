@@ -91,7 +91,7 @@ if ($LASTEXITCODE -ge 2) { "Luna 額度用完了" }
 }
 ```
 
-時間一律是 UTC。`level` 是 `ok`、`low`、`exhausted`、`unknown` 其中之一。`data_status` 為 `ok` 表示即時資料，`stale` 表示舊快照，`unavailable` 表示讀不到。`remaining_percent` 為 `null` 代表讀不到數值，原因寫在 `notes` 或 `providers.<名稱>.error`。`providers` 裡有每個代理的所有時間窗。
+時間一律是 UTC。`level` 是 `ok`、`low`、`exhausted`、`unknown` 其中之一。`data_status` 為 `ok` 表示即時資料，`stale` 表示舊快照，`unavailable` 表示讀不到。`remaining_percent` 為 `null` 代表讀不到數值，原因寫在 `notes` 或 `providers.<名稱>.error`。`providers` 裡有每個代理的所有時間窗。`unmapped_buckets` 是沒有代理在看的額度，`models` 是模型清單的檢查結果（格式同 `cue models --json`；沒有抓模型時是 `null`）。
 
 ## Claude Code Skill
 
@@ -133,17 +133,84 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 
 結束碼：`0` 成功、`1` 任務本身失敗（不是額度問題）、`2` 沒有代理有額度、`3` 設定錯誤或同一任務正在執行。每次執行記在 `data/relay/history.jsonl`，各代理的完整輸出存在 `data/relay/logs/`。
 
-預設接力順序是三家同等級的模型，推理強度都是 medium：
+接力用哪些模型，寫在 repo 裡的 `runners.json`。預設順序是三家同等級的模型，推理強度都是 medium：
 
-| 順序 | 代理 | 指令 | 無人模式下能做什麼 |
-|---|---|---|---|
-| 1 | `claude` | `claude -p --model claude-opus-5-5 --effort medium --permission-mode acceptEdits` | 讀寫工作資料夾裡的檔案；需要核准的 shell 指令會被拒絕 |
-| 2 | `sol` | `codex exec -s workspace-write -m gpt-6.1-sol -c model_reasoning_effort=medium -C <工作資料夾>` | 在沙盒裡執行指令，只能寫工作資料夾 |
-| 3 | `argon` | `agy -p ... --model gemini-4-argon-medium --effort medium --mode accept-edits` | 讀寫檔案；shell 指令會被拒絕 |
+| 順序 | 代理 | 平台 | 模型 | 無人模式下能做什麼 |
+|---|---|---|---|---|
+| 1 | `claude` | Claude Code | `claude-opus-5-5` | 讀寫工作資料夾裡的檔案；需要核准的 shell 指令會被拒絕 |
+| 2 | `sol` | Codex CLI | `gpt-6.1-sol` | 在沙盒裡執行指令，只能寫工作資料夾 |
+| 3 | `argon` | Antigravity `agy` | `gemini-4-argon-medium` | 讀寫檔案；shell 指令會被拒絕 |
 
-三家的額度互不相干，所以一家用完，另外兩家還能接手。`relay.json` 的 `default_order` 可以改預設順序。
+三家的額度互不相干，所以一家用完，另外兩家還能接手。
 
-另外有 `luna`（Codex `gpt-6-luna`）和 `flash`（agy `gemini-3.8-flash-medium`）兩個執行方式，但不在預設順序裡：Luna 和 Sol 共用 Codex 的額度，Flash 的能力替代不了其他三個。需要的話，在任務的 `order` 裡自己加。`relay.json` 的 `runners` 可以改參數或加新的代理，`quota_agent` 指定它看哪個代理的額度。
+`runners.json` 另外有 `luna`（Codex `gpt-6-luna`）和 `flash`（agy `gemini-3.8-flash-medium`），但不在預設順序裡：Luna 和 Sol 共用 Codex 的額度，Flash 的能力替代不了其他三個。需要的話，在任務的 `order` 裡自己加。
+
+接力時如果模型不存在（改名或下架），三家都會回特定的錯誤訊息。`cue relay` 認得這些訊息，會把這一棒記成「模型不存在」並換下一位，同時提醒你執行 `cue models`。
+
+## 換模型（runners.json 與 cue models）
+
+各平台會不定期推出新模型、把舊的改名或下架。CueSheet 把「哪些是即時抓的」和「哪些要你決定」分開：
+
+| 內容 | 怎麼來的 |
+|---|---|
+| 三家的額度與重置時間 | 每次查詢時向 CLI 呼叫取得，新模型的獨立額度會自動出現 |
+| Gemini 各組包含哪些模型 | 從 `agy` 的回應即時讀出（例如「Gemini 組（Hydrogen、Flash）」） |
+| 三家目前提供的模型清單 | `cue models` 即時呼叫：Claude Code 的 `initialize`、Codex 的 `model/list`、`agy models` |
+| 接力用哪個模型、哪個推理強度 | `runners.json`，由你決定 |
+| 哪個代理看哪幾個額度 | `agents.json`，由你決定 |
+
+### runners.json 的格式
+
+```json
+{
+  "default_order": ["claude", "sol", "argon"],
+  "runners": {
+    "claude": {"platform": "claude", "model": "claude-opus-5-5", "effort": "medium", "family": "opus"},
+    "sol": {"platform": "codex", "model": "gpt-6.1-sol", "effort": "medium", "family": "sol"},
+    "argon": {"platform": "agy", "model": "gemini-4-argon-medium", "effort": "medium", "family": "argon"}
+  }
+}
+```
+
+- `platform`：`claude`、`codex` 或 `agy`。CueSheet 依平台組出無人模式的指令。
+- `model`：模型 id，要跟 `cue models` 列出來的一樣。
+- `effort`：推理強度，可省略。`agy` 的模型 id 本身就帶強度（例如 `-medium`）。
+- `family`：系列名稱，`cue models` 用它找同系列的新版本。
+- 自己的 `relay.json` 也可以寫 `runners`，只寫要改的欄位就好，其餘沿用 `runners.json`。例如只想讓某個任務改用 Fable：`"runners": {"claude": {"model": "claude-fable-5-2"}}`。
+
+### 檢查與更新
+
+```powershell
+.\cue.ps1 models            # 列出三家模型，檢查 runners.json 的每個模型
+.\cue.ps1 models --update   # 把同系列較新的版本寫回 runners.json
+.\cue.ps1 models --json     # 改印 JSON
+```
+
+每個接力模型會顯示四種狀態：`正常`、`可升級`（同系列有更新的版本）、`不存在`（平台上找不到，會列出同系列最新的版本）、`未知`（讀不到那家的模型清單）。Codex 的模型也會檢查推理強度是否支援。
+
+`--update` 只會換成同系列的新版本，例如 `gpt-6-sol` 換成 `gpt-6.1-sol`、`claude-opus-4-8` 換成 `claude-opus-5-5`。系列的判斷方式是從模型 id 拆出系列名和版本號（`claude-<系列>-<版本>`、`gpt-<版本>-<系列>`、`gemini-<版本>-<系列>-<強度>`），版本最大的就是最新版。改完會在畫面上列出改了哪些，`runners.json` 在 Git 裡，改錯可以還原。
+
+### 平常查額度時的提醒
+
+每次執行 `cue`，都會在背景順便抓一次模型清單（不花額度，和查額度同時進行）。以下情況會列在最後的「需要注意」：
+
+- 有額度沒有代理在看，通常是新模型的獨立額度（例如 Claude 的 Fable 週額度）。
+- 有新模型出現。CueSheet 把看過的模型記在 `data/models_seen.json`，第一次看到的模型會提醒 7 天。第一次執行只建立紀錄，不會提醒。
+- 接力用的模型不存在、可以升級，或推理強度不支援。
+
+不想抓模型清單時加 `--no-models`。只查單一代理（`--agent`）或部分平台（`--only`）時也不會抓。
+
+### 沒有人更新 CueSheet 時，自己怎麼改
+
+1. 執行 `.\cue.ps1 models`，看哪個接力模型是 `不存在` 或 `可升級`。
+2. 同系列的新版本：執行 `.\cue.ps1 models --update`。
+3. 想換成別的系列（例如 Argon 換成 Hydrogen）：直接編輯 `runners.json` 的 `model` 和 `family`，模型 id 照 `cue models` 列出來的抄。
+4. 新模型有自己的額度時：在 `agents.json` 加一個代理，`buckets` 填 `cue --json` 裡 `providers` 列出的額度 id；如果要讓接力看這個額度，在 `runners.json` 那一筆加 `"quota_agent": "<代理 id>"`。
+5. 執行 `.\cue.ps1 relay <任務> --dry-run` 確認指令正確。
+
+### 還沒做到的部分
+
+`cue models` 目前只會找「同系列」的新版本。不同系列之間誰跟誰同等級（例如 Hydrogen 是不是可以取代 Argon），還要你自己判斷。比較可靠的做法是參考公開的模型排行榜或基準測試分數，用分數區間自動配對同等級的模型，這是之後要做的方向。
 
 寫任務時要注意：
 
@@ -173,6 +240,8 @@ Codex app server 另有一個 `account/rateLimitResetCredit/consume` 方法，�
 
 `agents.json` 設定代理和時間窗的對應，以及偏低、用完的門檻。內建的代理是 `claude`、`sol`、`luna`、`argon`、`flash`、`agy-3p`。列在 `buckets` 的時間窗必須存在；列在 `optional_buckets` 的時間窗有出現才計算。
 
+`runners.json` 設定接力用的模型與預設順序，格式見上方「換模型」一節。
+
 CLI 不在 `PATH` 裡時，把 `config.example.json` 複製成 `config.json` 並填入路徑。`config.json` 不進 Git。
 
 ## 開發
@@ -181,7 +250,7 @@ CLI 不在 `PATH` 裡時，把 `config.example.json` 複製成 `config.json` 並
 python -m unittest discover -s tests
 ```
 
-測試使用 `tests/fixtures` 裡錄下的 CLI 回應，接力的測試用假的代理模擬額度用完，都不會呼叫任何 AI CLI。每個代理在 `cuesheet/` 有自己的模組（`claude.py`、`codex.py`、`gemini.py`），某個 CLI 的輸出改變時，通常只需要修一個檔案。
+測試使用 `tests/fixtures` 裡錄下的 CLI 回應和模型清單，接力的測試用假的代理模擬額度用完，都不會呼叫任何 AI CLI。每個代理在 `cuesheet/` 有自己的模組（`claude.py`、`codex.py`、`gemini.py`），某個 CLI 的輸出改變時，通常只需要修一個檔案。
 
 ## 相關專案
 
