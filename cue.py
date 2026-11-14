@@ -6,6 +6,7 @@
   python cue.py --only codex     只查某幾端（claude,codex,gemini）
   python cue.py --max-age 300    latest.json 未滿 300 秒就直接沿用
   python cue.py --agent luna     只看一個代理；結束碼 0 正常／1 偏低／2 用完／3 未知
+  python cue.py relay <任務>     依額度接力執行 relay.json 裡的任務（見 cuesheet/relay.py）
 """
 from __future__ import annotations
 
@@ -41,9 +42,32 @@ def collect(names: list[str], cfg: dict, timeout: float) -> dict:
         return {n: f.result() for n, f in futures.items()}
 
 
+def run_relay(argv: list[str]) -> int:
+    from cuesheet import relay
+
+    cfg = load_json(ROOT / "config.json", {})
+    agents_cfg = load_json(ROOT / "agents.json", {"agents": []})
+    provider_of = {a["id"]: a["provider"] for a in agents_cfg.get("agents", [])}
+
+    def agents_for(quota_ids) -> dict:
+        names = sorted({provider_of[q] for q in quota_ids if q in provider_of})
+        providers = collect(names, cfg, 90) if names else {}
+        return {a["id"]: a for a in evaluate_agents(providers, agents_cfg)}
+
+    def get_agents(order, runners):
+        return agents_for({runners[a].get("quota_agent", a) for a in order if a in runners})
+
+    def recheck(quota_id):
+        return agents_for({quota_id}).get(quota_id)
+
+    return relay.main(argv, root=ROOT, get_agents=get_agents, recheck_agent=recheck, load_json=load_json)
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")
+    if sys.argv[1:2] == ["relay"]:
+        return run_relay(sys.argv[2:])
     ap = argparse.ArgumentParser(prog="cue", description="CueSheet：查看 Claude Code、Codex、agy 的剩餘額度")
     ap.add_argument("--version", action="version", version=f"CueSheet {__version__}")
     ap.add_argument("--json", action="store_true", help="輸出 JSON")
