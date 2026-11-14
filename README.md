@@ -121,7 +121,7 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 "daily-notes": {
   "workdir": "C:\\path\\to\\project",
   "prompt": "讀 notes 裡今天修改過的 .md 檔，整理成摘要，寫到 summaries/YYYY-MM-DD.md。",
-  "order": ["claude", "luna", "flash"],   // 上場順序
+  "order": ["claude", "sol", "argon"],    // 上場順序；不寫就用預設
   "min_remaining_percent": 20,            // 低於這個比例的代理排到後面
   "timeout_minutes": 30,
   "handover_on": "quota",                 // quota：只有額度用完才換人；any_failure：任何失敗都換人
@@ -133,22 +133,22 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 
 結束碼：`0` 成功、`1` 任務本身失敗（不是額度問題）、`2` 沒有代理有額度、`3` 設定錯誤或同一任務正在執行。每次執行記在 `data/relay/history.jsonl`，各代理的完整輸出存在 `data/relay/logs/`。
 
-內建的代理與執行方式：
+預設接力順序是三家同等級的模型，推理強度都是 medium：
 
-| 代理 | 指令 | 無人模式下能做什麼 |
-|---|---|---|
-| `claude` | `claude -p --permission-mode acceptEdits` | 讀寫工作資料夾裡的檔案；需要核准的 shell 指令會被拒絕 |
-| `luna` | `codex exec -s workspace-write -m gpt-6-luna -C <工作資料夾>` | 在沙盒裡執行指令，只能寫工作資料夾 |
-| `flash` | `agy -p ... --model gemini-3.8-flash-medium --mode accept-edits` | 讀寫檔案；shell 指令會被拒絕 |
-| `argon` | `agy -p ... --model gemini-4-argon-medium --effort medium --mode accept-edits` | 同 `flash` |
+| 順序 | 代理 | 指令 | 無人模式下能做什麼 |
+|---|---|---|---|
+| 1 | `claude` | `claude -p --model claude-opus-5-5 --effort medium --permission-mode acceptEdits` | 讀寫工作資料夾裡的檔案；需要核准的 shell 指令會被拒絕 |
+| 2 | `sol` | `codex exec -s workspace-write -m gpt-6.1-sol -c model_reasoning_effort=medium -C <工作資料夾>` | 在沙盒裡執行指令，只能寫工作資料夾 |
+| 3 | `argon` | `agy -p ... --model gemini-4-argon-medium --effort medium --mode accept-edits` | 讀寫檔案；shell 指令會被拒絕 |
 
-`relay.json` 的 `runners` 可以改參數或加新的代理，`quota_agent` 指定它看哪個代理的額度。
+三家的額度互不相干，所以一家用完，另外兩家還能接手。`relay.json` 的 `default_order` 可以改預設順序。
+
+另外有 `luna`（Codex `gpt-6-luna`）和 `flash`（agy `gemini-3.8-flash-medium`）兩個執行方式，但不在預設順序裡：Luna 和 Sol 共用 Codex 的額度，Flash 的能力替代不了其他三個。需要的話，在任務的 `order` 裡自己加。`relay.json` 的 `runners` 可以改參數或加新的代理，`quota_agent` 指定它看哪個代理的額度。
 
 寫任務時要注意：
 
 - 接手的代理不知道上一位做到哪裡，會從頭再跑一次。任務最好寫成「把結果寫到某個檔案」，重跑也不會出錯。
 - 無人模式下沒有人能按「允許」，需要核准的工具會被自動拒絕。`agy` 被拒絕時結束碼仍是 0，`cue relay` 會從錯誤輸出辨認出來，記成權限問題。只需要讀寫檔案的任務最穩。
-- Flash 比 Argon 和 Luna 便宜，推理也比較弱。太難的任務不要把 Flash 排進順序。
 - 排程只在你登入 Windows 時執行，因為三家 CLI 的登入狀態都存在你的使用者帳號下。
 
 ## 額度怎麼讀取
@@ -171,7 +171,7 @@ Codex app server 另有一個 `account/rateLimitResetCredit/consume` 方法，�
 
 ## 設定
 
-`agents.json` 設定代理和時間窗的對應，以及偏低、用完的門檻。內建的代理是 `claude`、`luna`、`argon`、`flash`、`agy-3p`。列在 `buckets` 的時間窗必須存在；列在 `optional_buckets` 的時間窗有出現才計算。
+`agents.json` 設定代理和時間窗的對應，以及偏低、用完的門檻。內建的代理是 `claude`、`sol`、`luna`、`argon`、`flash`、`agy-3p`。列在 `buckets` 的時間窗必須存在；列在 `optional_buckets` 的時間窗有出現才計算。
 
 CLI 不在 `PATH` 裡時，把 `config.example.json` 複製成 `config.json` 並填入路徑。`config.json` 不進 Git。
 

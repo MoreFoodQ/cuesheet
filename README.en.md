@@ -121,7 +121,7 @@ A task looks like this:
 "daily-notes": {
   "workdir": "C:\\path\\to\\project",
   "prompt": "Summarize the .md files in notes changed today into summaries/YYYY-MM-DD.md.",
-  "order": ["claude", "luna", "flash"],   // who goes first
+  "order": ["claude", "sol", "argon"],    // who goes first; omit to use the default
   "min_remaining_percent": 20,            // agents below this move to the back
   "timeout_minutes": 30,
   "handover_on": "quota",                 // quota: hand over only when quota runs out; any_failure: on any failure
@@ -133,22 +133,22 @@ Agents with at least `min_remaining_percent` left go first, in order. Agents tha
 
 Exit codes: `0` success, `1` the task failed for a reason other than quota, `2` no agent had quota, `3` configuration error or the same task is already running. Every run is recorded in `data/relay/history.jsonl`, and each agent's full output is saved in `data/relay/logs/`.
 
-Built-in agents:
+The default order uses three models of the same tier, all at medium reasoning effort:
 
-| Agent | Command | What it can do unattended |
-|---|---|---|
-| `claude` | `claude -p --permission-mode acceptEdits` | Read and write files in the working folder; shell commands that need approval are denied |
-| `luna` | `codex exec -s workspace-write -m gpt-6-luna -C <workdir>` | Run commands in a sandbox that can only write the working folder |
-| `flash` | `agy -p ... --model gemini-3.8-flash-medium --mode accept-edits` | Read and write files; shell commands are denied |
-| `argon` | `agy -p ... --model gemini-4-argon-medium --effort medium --mode accept-edits` | Same as `flash` |
+| Order | Agent | Command | What it can do unattended |
+|---|---|---|---|
+| 1 | `claude` | `claude -p --model claude-opus-5-5 --effort medium --permission-mode acceptEdits` | Read and write files in the working folder; shell commands that need approval are denied |
+| 2 | `sol` | `codex exec -s workspace-write -m gpt-6.1-sol -c model_reasoning_effort=medium -C <workdir>` | Run commands in a sandbox that can only write the working folder |
+| 3 | `argon` | `agy -p ... --model gemini-4-argon-medium --effort medium --mode accept-edits` | Read and write files; shell commands are denied |
 
-The `runners` section of `relay.json` can change these arguments or add agents. `quota_agent` sets which agent's quota a runner follows.
+The three draw on separate quotas, so when one runs out the other two can still take over. `default_order` in `relay.json` changes the default.
+
+Two more runners exist but are not in the default order: `luna` (Codex `gpt-6-luna`) shares the Codex quota with Sol, and `flash` (agy `gemini-3.8-flash-medium`) cannot do the work of the other three. Add them to a task's `order` if you want them. The `runners` section of `relay.json` can change arguments or add agents, and `quota_agent` sets which agent's quota a runner follows.
 
 Things to keep in mind when writing tasks:
 
 - The agent that takes over does not know how far the previous one got and starts again. Tasks that write their result to a file are safe to run twice.
 - Nobody is there to approve tools, so tools that need approval are denied. `agy` still exits with code 0 when this happens; `cue relay` recognizes the message and records a permission problem. Tasks that only read and write files are the most reliable.
-- Flash costs less than Argon and Luna and is weaker at reasoning. Leave it out of the order for hard tasks.
 - Scheduled jobs run only while you are signed in to Windows, because each CLI keeps its sign-in under your user account.
 
 ## How quota is read
@@ -171,7 +171,7 @@ Last tested with Claude Code 2.1.304, codex-cli 0.164.0, and `agy` on 2026-11-06
 
 ## Configuration
 
-`agents.json` maps agents to quota windows and sets the low and exhausted thresholds. The included agents are `claude`, `luna`, `argon`, `flash`, and `agy-3p`. Windows listed under `buckets` must exist in the provider's output; windows under `optional_buckets` count only when present.
+`agents.json` maps agents to quota windows and sets the low and exhausted thresholds. The included agents are `claude`, `sol`, `luna`, `argon`, `flash`, and `agy-3p`. Windows listed under `buckets` must exist in the provider's output; windows under `optional_buckets` count only when present.
 
 If a CLI is not on `PATH`, copy `config.example.json` to `config.json` and set its location. Git ignores `config.json`.
 
