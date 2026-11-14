@@ -54,6 +54,40 @@ def evaluate_agents(providers: dict, agents_cfg: dict) -> list[dict]:
     return out
 
 
+def unmapped_buckets(providers: dict, agents_cfg: dict) -> list[dict]:
+    """來源有回傳、但 agents.json 沒有任何代理在看的額度（通常是新模型的獨立額度）。"""
+    used = {b for a in agents_cfg.get("agents", []) for b in a.get("buckets", []) + a.get("optional_buckets", [])}
+    return [{"provider": name, "id": b["id"], "label": b["label"], "remaining_percent": b["remaining_percent"]}
+            for name, p in providers.items() if p.get("status") in ("ok", "stale")
+            for b in p.get("buckets", []) if b["id"] not in used]
+
+
+RUNNER_STATUS = {"ok": "正常", "upgradable": "可升級", "missing": "不存在", "unknown": "未知"}
+
+
+def attention_items(report: dict) -> list[str]:
+    items = []
+    for b in report.get("unmapped_buckets", []):
+        items.append(f"{b['label']}（{b['provider']}，剩 {fmt_pct(b['remaining_percent'])}）沒有代理在看。"
+                     "要派工給它，請在 agents.json 加一個代理。")
+    models = report.get("models") or {}
+    for m in models.get("new", []):
+        items.append(f"新模型：{m['name']}（{m['id']}，{m['platform']}）")
+    for r in models.get("runners", []):
+        if r["status"] == "missing":
+            hint = f"同系列最新是 {r['suggestion']}" if r["suggestion"] else "找不到同系列的模型"
+            items.append(f"接力代理 {r['runner']} 的模型 {r['model']} 已不存在，{hint}。執行 cue models --update 更新。")
+        elif r["status"] == "upgradable":
+            items.append(f"接力代理 {r['runner']} 有同系列較新版本：{r['model']} → {r['suggestion']}。"
+                         "執行 cue models --update 更新。")
+        if r.get("note"):
+            items.append(f"接力代理 {r['runner']}：{r['note']}")
+    for platform, cat in (models.get("catalog") or {}).items():
+        if cat.get("status") != "ok":
+            items.append(f"讀不到 {platform} 的模型清單：{cat.get('error')}")
+    return items
+
+
 # ---------- 文字輸出 ----------
 
 def _width(text: str) -> int:
@@ -120,5 +154,11 @@ def render(report: dict) -> str:
                 lines.append(line)
         for n in p.get("notes", []):
             lines.append(f"  · {n}")
+        lines.append("")
+
+    items = attention_items(report)
+    if items:
+        lines.append("■ 需要注意")
+        lines.extend(f"  · {i}" for i in items)
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"

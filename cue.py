@@ -7,6 +7,7 @@
   python cue.py --max-age 300    latest.json 未滿 300 秒就直接沿用
   python cue.py --agent luna     只看一個代理；結束碼 0 正常／1 偏低／2 用完／3 未知
   python cue.py relay <任務>     依額度接力執行 relay.json 裡的任務（見 cuesheet/relay.py）
+  python cue.py models           列出三家目前的模型，檢查 runners.json 的接力模型
 """
 from __future__ import annotations
 
@@ -20,13 +21,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from cuesheet import __version__, claude, codex, gemini  # noqa: E402
+from cuesheet import __version__, claude, codex, gemini, models  # noqa: E402
 from cuesheet.common import now_iso, now_utc, parse_iso  # noqa: E402
-from cuesheet.report import LEVEL_TEXT, evaluate_agents, fmt_pct, fmt_time, render  # noqa: E402
+from cuesheet.report import (LEVEL_TEXT, RUNNER_STATUS, _pad, _width, evaluate_agents, fmt_pct,  # noqa: E402
+                             fmt_time, render, unmapped_buckets)
 
 PROVIDERS = {"claude": claude, "codex": codex, "gemini": gemini}
 EXIT_CODES = {"ok": 0, "low": 1, "exhausted": 2, "unknown": 3}
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 1  # 只新增欄位，舊欄位不變
+SEEN_PATH = ROOT / "data" / "models_seen.json"
 
 
 def load_json(path: Path, default):
@@ -40,6 +43,65 @@ def collect(names: list[str], cfg: dict, timeout: float) -> dict:
     with ThreadPoolExecutor(max_workers=len(names)) as pool:
         futures = {n: pool.submit(PROVIDERS[n].collect, cfg, timeout) for n in names}
         return {n: f.result() for n, f in futures.items()}
+
+
+def model_check(cfg: dict, timeout: float) -> dict:
+    """即時抓三家模型清單，檢查 runners.json，並記錄新模型。"""
+    catalog = models.collect_models(cfg, timeout)
+    runners_cfg = load_json(ROOT / "runners.json", {})
+    return {
+        "catalog": catalog,
+        "runners": models.check_runners(runners_cfg.get("runners", {}), catalog),
+        "new": models.update_seen(catalog, SEEN_PATH),
+    }
+
+
+def run_models(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(prog="cue models", description="列出三家目前的模型，檢查接力用的模型（runners.json）")
+    ap.add_argument("--json", action="store_true", help="輸出 JSON")
+    ap.add_argument("--update", action="store_true", help="把同系列較新的版本寫回 runners.json")
+    ap.add_argument("--timeout", type=float, default=90)
+    args = ap.parse_args(argv)
+
+    check = model_check(load_json(ROOT / "config.json", {}), args.timeout)
+    if args.json:
+        print(json.dumps(check, ensure_ascii=True, indent=2))
+        return 0
+
+    used = {r["model"] for r in check["runners"]}
+    new_ids = {m["id"] for m in check["new"]}
+    print("■ 接力模型（runners.json）")
+    rows = [("狀態", "代理", "平台", "模型", "說明")]
+    for r in check["runners"]:
+        note = ""
+        if r["status"] == "upgradable":
+            note = f"同系列較新：{r['suggestion']}"
+        elif r["status"] == "missing":
+            note = f"平台上找不到；同系列最新：{r['suggestion'] or '無'}"
+        rows.append((f"[{RUNNER_STATUS[r['status']]}]", r["runner"], r["platform"], r["model"],
+                     " ".join(filter(None, [note, r.get("note")]))))
+    widths = [max(_width(row[i]) for row in rows) for i in range(4)]
+    for row in rows:
+        print("  " + "  ".join(_pad(row[i], widths[i]) for i in range(4)) + "  " + row[4])
+    print()
+    for platform, cat in check["catalog"].items():
+        print(f"■ {models.PLATFORM_LABELS[platform]}（{len(cat['models'])} 個模型）")
+        if cat["status"] != "ok":
+            print(f"  讀不到：{cat['error']}")
+        for m in cat["models"]:
+            mark = "★" if m["id"] in used else ("新" if m["id"] in new_ids else " ")
+            extra = "（隱藏）" if m.get("hidden") else ""
+            print(f"  {mark} {m['id']}　{m['name']}{extra}")
+        print()
+    print("★＝接力在用　新＝最近 7 天第一次出現")
+
+    if args.update:
+        changes = models.apply_updates(ROOT / "runners.json", check["runners"])
+        for rid, old, new in changes:
+            print(f"已更新 runners.json：{rid}　{old} → {new}")
+        if not changes:
+            print("runners.json 不需要更新。")
+    return 0
 
 
 def run_relay(argv: list[str]) -> int:
@@ -68,6 +130,8 @@ def main() -> int:
         sys.stdout.reconfigure(errors="replace")
     if sys.argv[1:2] == ["relay"]:
         return run_relay(sys.argv[2:])
+    if sys.argv[1:2] == ["models"]:
+        return run_models(sys.argv[2:])
     ap = argparse.ArgumentParser(prog="cue", description="CueSheet：查看 Claude Code、Codex、agy 的剩餘額度")
     ap.add_argument("--version", action="version", version=f"CueSheet {__version__}")
     ap.add_argument("--json", action="store_true", help="輸出 JSON")
@@ -77,6 +141,7 @@ def main() -> int:
     ap.add_argument("--max-age", type=float, default=0, help="快取秒數；latest.json 夠新就不重查")
     ap.add_argument("--agent", help="只看這個代理（agents.json 的 id），以結束碼回報狀態")
     ap.add_argument("--timeout", type=float, default=90, help="每端逾時秒數")
+    ap.add_argument("--no-models", action="store_true", help="不檢查模型清單（新模型、接力模型）")
     args = ap.parse_args()
 
     cfg = load_json(ROOT / "config.json", {})
@@ -94,12 +159,19 @@ def main() -> int:
         names = [n.strip() for n in args.only.split(",") if n.strip() in PROVIDERS]
         if not names:
             ap.error("--only 至少要有 claude、codex、gemini 其中一個")
-        providers = collect(names, cfg, args.timeout)
+        check_models = not (args.no_models or args.agent or set(names) != set(PROVIDERS))
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            fut_quota = pool.submit(collect, names, cfg, args.timeout)
+            fut_models = pool.submit(model_check, cfg, args.timeout) if check_models else None
+            providers = fut_quota.result()
+            model_info = fut_models.result() if fut_models else None
         report = {
             "schema_version": SCHEMA_VERSION,
             "generated_at": now_iso(),
             "providers": providers,
             "agents": evaluate_agents(providers, agents_cfg),
+            "unmapped_buckets": unmapped_buckets(providers, agents_cfg),
+            "models": model_info,
         }
         if not args.no_write:
             out_path.parent.mkdir(parents=True, exist_ok=True)
