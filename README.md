@@ -10,7 +10,7 @@
 
 <p align="center">繁體中文 | <a href="README.en.md">English</a></p>
 
-CueSheet 是一個命令列工具，列出同一台電腦上三個 AI 程式代理的剩餘額度：Claude Code、Codex CLI，以及 Antigravity 的 CLI（`agy`）。它會印出每個額度時間窗和重置時間，並把同樣的資料寫成 JSON，讓腳本或其他 AI 代理在派工前先查額度。
+CueSheet 是一個命令列工具，列出同一台電腦上三個 AI 程式代理的剩餘額度：Claude Code、Codex CLI，以及 Antigravity 的 CLI（`agy`）。它會印出每個額度時間窗和重置時間，並把同樣的資料寫成 JSON，讓腳本或其他 AI 代理在派工前先查額度。排程任務可以交給 `cue relay`：它會挑有額度的代理執行，跑到一半額度用完就換下一位接手。
 
 ## 顯示哪些額度
 
@@ -103,6 +103,54 @@ if ($LASTEXITCODE -ge 2) { "Luna 額度用完了" }
 
 腳本會把 Skill 複製到 `~/.claude/skills/cuesheet/`，並填入這個 repo 的路徑。
 
+## 排程接力（cue relay）
+
+`cue relay` 照額度決定排程任務由誰執行。任務寫在 `relay.json`，每個任務有提示詞、工作資料夾和代理順序。執行時先查額度，跳過已經用完的代理，交給順序上第一個有額度的人；它跑到一半額度用完，就換下一位重新跑。`cue relay` 本身不是 AI，不消耗額度。
+
+```powershell
+copy relay.example.json relay.json        # 第一次使用：複製範例再編輯
+.\cue.ps1 relay --list                    # 列出任務
+.\cue.ps1 relay daily-notes --dry-run     # 只顯示會派給誰，不執行
+.\cue.ps1 relay daily-notes               # 執行
+.\schedule-relay.ps1 -Task daily-notes -At 09:00   # 排進 Windows 工作排程器，每天 09:00
+```
+
+任務設定：
+
+```jsonc
+"daily-notes": {
+  "workdir": "C:\\path\\to\\project",
+  "prompt": "讀 notes 裡今天修改過的 .md 檔，整理成摘要，寫到 summaries/YYYY-MM-DD.md。",
+  "order": ["claude", "luna", "flash"],   // 上場順序
+  "min_remaining_percent": 20,            // 低於這個比例的代理排到後面
+  "timeout_minutes": 30,
+  "handover_on": "quota",                 // quota：只有額度用完才換人；any_failure：任何失敗都換人
+  "success_file": "summaries/latest.md"   // 選用：這個檔案有被寫出才算成功
+}
+```
+
+選人的規則：剩餘量達到 `min_remaining_percent` 的代理照順序先上；偏低或讀不到額度的排在後面；已用完的不上場。換人有兩種判斷：輸出裡出現額度用完的訊息，或失敗後重查額度發現已經用完。
+
+結束碼：`0` 成功、`1` 任務本身失敗（不是額度問題）、`2` 沒有代理有額度、`3` 設定錯誤或同一任務正在執行。每次執行記在 `data/relay/history.jsonl`，各代理的完整輸出存在 `data/relay/logs/`。
+
+內建的代理與執行方式：
+
+| 代理 | 指令 | 無人模式下能做什麼 |
+|---|---|---|
+| `claude` | `claude -p --permission-mode acceptEdits` | 讀寫工作資料夾裡的檔案；需要核准的 shell 指令會被拒絕 |
+| `luna` | `codex exec -s workspace-write -m gpt-6-luna -C <工作資料夾>` | 在沙盒裡執行指令，只能寫工作資料夾 |
+| `flash` | `agy -p ... --model gemini-3.8-flash-medium --mode accept-edits` | 讀寫檔案；shell 指令會被拒絕 |
+| `argon` | `agy -p ... --model gemini-4-argon-medium --effort medium --mode accept-edits` | 同 `flash` |
+
+`relay.json` 的 `runners` 可以改參數或加新的代理，`quota_agent` 指定它看哪個代理的額度。
+
+寫任務時要注意：
+
+- 接手的代理不知道上一位做到哪裡，會從頭再跑一次。任務最好寫成「把結果寫到某個檔案」，重跑也不會出錯。
+- 無人模式下沒有人能按「允許」，需要核准的工具會被自動拒絕。`agy` 被拒絕時結束碼仍是 0，`cue relay` 會從錯誤輸出辨認出來，記成權限問題。只需要讀寫檔案的任務最穩。
+- Flash 比 Argon 和 Luna 便宜，推理也比較弱。太難的任務不要把 Flash 排進順序。
+- 排程只在你登入 Windows 時執行，因為三家 CLI 的登入狀態都存在你的使用者帳號下。
+
 ## 額度怎麼讀取
 
 每個代理都透過它自己 CLI 的唯讀指令查詢，不會開始模型回合，也不會消耗額度。CueSheet 不讀取、不儲存、不傳送任何登入憑證，登入由各 CLI 自己處理。CueSheet 會讀寫哪些東西，列在 [SECURITY.md](SECURITY.md)。
@@ -133,7 +181,7 @@ CLI 不在 `PATH` 裡時，把 `config.example.json` 複製成 `config.json` 並
 python -m unittest discover -s tests
 ```
 
-測試使用 `tests/fixtures` 裡錄下的 CLI 回應，不會呼叫任何 CLI。每個代理在 `cuesheet/` 有自己的模組（`claude.py`、`codex.py`、`gemini.py`），某個 CLI 的輸出改變時，通常只需要修一個檔案。
+測試使用 `tests/fixtures` 裡錄下的 CLI 回應，接力的測試用假的代理模擬額度用完，都不會呼叫任何 AI CLI。每個代理在 `cuesheet/` 有自己的模組（`claude.py`、`codex.py`、`gemini.py`），某個 CLI 的輸出改變時，通常只需要修一個檔案。
 
 ## 相關專案
 

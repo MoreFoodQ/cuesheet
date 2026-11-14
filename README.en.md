@@ -10,7 +10,7 @@
 
 <p align="center"><a href="README.md">繁體中文</a> | English</p>
 
-CueSheet is a command-line tool that reports the remaining usage quota of three AI coding agents on one machine: Claude Code, Codex CLI, and the Antigravity CLI (`agy`). It prints every quota window with its reset time and writes the same data as JSON, so scripts and other agents can check quota before they hand out work.
+CueSheet is a command-line tool that reports the remaining usage quota of three AI coding agents on one machine: Claude Code, Codex CLI, and the Antigravity CLI (`agy`). It prints every quota window with its reset time and writes the same data as JSON, so scripts and other agents can check quota before they hand out work. Scheduled tasks can go through `cue relay`, which picks an agent that still has quota and hands the task to the next agent if the first one runs out partway.
 
 ## What it reports
 
@@ -103,6 +103,54 @@ All times are UTC. `level` is one of `ok`, `low`, `exhausted`, `unknown`. `data_
 
 The script copies the skill to `~/.claude/skills/cuesheet/` and fills in the path to this repository.
 
+## Scheduled relay (cue relay)
+
+`cue relay` decides which agent runs a scheduled task based on quota. Tasks live in `relay.json`; each has a prompt, a working folder, and an agent order. At run time CueSheet checks quota, skips agents that are out, and gives the task to the first agent in the order that has quota. If that agent runs out partway, the next agent runs the task again. `cue relay` is not an AI and uses no quota itself.
+
+```powershell
+copy relay.example.json relay.json        # first time: copy the example and edit it
+.\cue.ps1 relay --list                    # list tasks
+.\cue.ps1 relay daily-notes --dry-run     # show who would run it, without running
+.\cue.ps1 relay daily-notes               # run it
+.\schedule-relay.ps1 -Task daily-notes -At 09:00   # add a daily 09:00 job to Windows Task Scheduler
+```
+
+A task looks like this:
+
+```jsonc
+"daily-notes": {
+  "workdir": "C:\\path\\to\\project",
+  "prompt": "Summarize the .md files in notes changed today into summaries/YYYY-MM-DD.md.",
+  "order": ["claude", "luna", "flash"],   // who goes first
+  "min_remaining_percent": 20,            // agents below this move to the back
+  "timeout_minutes": 30,
+  "handover_on": "quota",                 // quota: hand over only when quota runs out; any_failure: on any failure
+  "success_file": "summaries/latest.md"   // optional: the run counts as a success only if this file was written
+}
+```
+
+Agents with at least `min_remaining_percent` left go first, in order. Agents that are low or whose quota could not be read go after them, and exhausted agents are skipped. A handover happens when the agent's output contains a quota-exhausted message, or when a failed run is followed by a quota check that shows the agent is out.
+
+Exit codes: `0` success, `1` the task failed for a reason other than quota, `2` no agent had quota, `3` configuration error or the same task is already running. Every run is recorded in `data/relay/history.jsonl`, and each agent's full output is saved in `data/relay/logs/`.
+
+Built-in agents:
+
+| Agent | Command | What it can do unattended |
+|---|---|---|
+| `claude` | `claude -p --permission-mode acceptEdits` | Read and write files in the working folder; shell commands that need approval are denied |
+| `luna` | `codex exec -s workspace-write -m gpt-6-luna -C <workdir>` | Run commands in a sandbox that can only write the working folder |
+| `flash` | `agy -p ... --model gemini-3.8-flash-medium --mode accept-edits` | Read and write files; shell commands are denied |
+| `argon` | `agy -p ... --model gemini-4-argon-medium --effort medium --mode accept-edits` | Same as `flash` |
+
+The `runners` section of `relay.json` can change these arguments or add agents. `quota_agent` sets which agent's quota a runner follows.
+
+Things to keep in mind when writing tasks:
+
+- The agent that takes over does not know how far the previous one got and starts again. Tasks that write their result to a file are safe to run twice.
+- Nobody is there to approve tools, so tools that need approval are denied. `agy` still exits with code 0 when this happens; `cue relay` recognizes the message and records a permission problem. Tasks that only read and write files are the most reliable.
+- Flash costs less than Argon and Luna and is weaker at reasoning. Leave it out of the order for hard tasks.
+- Scheduled jobs run only while you are signed in to Windows, because each CLI keeps its sign-in under your user account.
+
 ## How quota is read
 
 Each agent is queried through a read-only command of its own CLI. These commands do not start a model turn and do not use quota. CueSheet does not read, store, or send credentials; each CLI handles its own sign-in. [SECURITY.md](SECURITY.md) lists everything CueSheet reads and writes.
@@ -133,7 +181,7 @@ If a CLI is not on `PATH`, copy `config.example.json` to `config.json` and set i
 python -m unittest discover -s tests
 ```
 
-The tests parse recorded CLI responses in `tests/fixtures` and do not call any CLI. Each agent has its own module in `cuesheet/` (`claude.py`, `codex.py`, `gemini.py`), so a change in one CLI's output usually needs a fix in one file.
+The tests parse recorded CLI responses in `tests/fixtures`, and the relay tests simulate exhausted quota with fake agents. No AI CLI is called. Each agent has its own module in `cuesheet/` (`claude.py`, `codex.py`, `gemini.py`), so a change in one CLI's output usually needs a fix in one file.
 
 ## Related projects
 

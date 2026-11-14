@@ -25,6 +25,16 @@ CueSheet does not read credential files, OAuth tokens, API keys, keychains, or b
 - `data/latest.json` in the repository. It contains quota percentages, reset times, plan names, and the number of Codex reset credits. Git ignores it.
 - `~/.claude/skills/cuesheet/SKILL.md`, only when you run `install-skill.ps1`.
 
+## cue relay
+
+`cue relay` is different from the quota check: it runs the agents for real. Each run uses that agent's quota and can change files in the task's `workdir`.
+
+- The built-in runners keep each agent inside the working folder: Claude Code with `--permission-mode acceptEdits`, Codex with the `workspace-write` sandbox and `-C <workdir>`, and `agy` with `--mode accept-edits`. Tools that need approval are denied because nobody is there to approve them.
+- CueSheet never adds `--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox`, or similar flags. If you add one in `relay.json`, the agent can run any command on your machine.
+- `relay.json` is ignored by Git because it holds your prompts and folder paths.
+- `data/relay/logs/` stores each agent's full output. Treat it like the files in your working folder.
+- `schedule-relay.ps1` registers a Windows scheduled task under your account. Remove it with `-Remove`.
+
 ## Reporting a problem
 
 Open an issue on GitHub. Do not paste tokens, API keys, or the contents of your credential files into the issue.
