@@ -69,6 +69,20 @@ class GeminiTest(unittest.TestCase):
         self.assertAlmostEqual(b["gemini-argon-wtu-weekly"]["remaining_percent"], 27.6)
         self.assertEqual(b["3p-weekly"]["remaining_percent"], 0.4)
 
+    def test_window_not_started_is_noted_not_hidden(self):
+        checked = datetime(2026, 11, 7, 2, 2, 52, tzinfo=timezone.utc)
+        out = {"status": "SUCCESS", "num_turns": 0, "command": {"name": "usage", "data": {"groups": [
+            {"name": "Gemini 4 Argon", "buckets": [
+                {"id": "gemini-argon-wtu-weekly", "window": "weekly", "remaining_fraction": 1,
+                 "reset_time": "2026-11-14T02:02:56Z"}]},
+            {"name": "Gemini Models", "buckets": [
+                {"id": "gemini-weekly", "window": "weekly", "remaining_fraction": 0.9967,
+                 "description": "You have used some of your weekly limit", "reset_time": "2026-11-14T02:01:28Z"}]}]}}}
+        b = by_id(gemini.parse(out, checked))
+        self.assertEqual(b["gemini-argon-wtu-weekly"]["remaining_percent"], 100.0)
+        self.assertIn("還沒開始用", b["gemini-argon-wtu-weekly"]["note"])
+        self.assertIsNone(b["gemini-weekly"]["note"])
+
     def test_rejects_model_turn(self):
         # 舊版 agy 把 /usage 當成一般提問：有 num_turns、沒有 command
         res = gemini.parse({"status": "SUCCESS", "num_turns": 1, "response": "..."})
