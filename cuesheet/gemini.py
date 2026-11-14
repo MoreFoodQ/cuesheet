@@ -10,6 +10,7 @@ agy 的 changelog 說明 print 模式下的 /usage 不會開模型回合、不�
 """
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 
 from .common import WINDOW_LABELS, find_exe, make_bucket, now_utc, parse_iso, provider_result, run_json, to_iso
@@ -28,11 +29,29 @@ def window_not_started(b: dict, checked_at) -> bool:
 
 SOURCE = 'agy -p "/usage" --output-format json（官方 CLI，不花額度）'
 DEFAULT_PATHS = (r"%LOCALAPPDATA%\agy\bin\agy.exe",)
+# 只翻譯組名；組裡有哪些模型，從 agy 回傳的 description 即時讀出來（新模型上線會自動出現）
 GROUP_LABELS = {
-    "Gemini Models": "Gemini 組（Flash＋Pro）",
+    "Gemini Models": "Gemini 組",
     "Claude and GPT models": "Claude／GPT 組",
     "Gemini 4 Argon": "Argon 專屬",
 }
+
+
+def group_models(description: str | None) -> list[str]:
+    """「Models within this group: Gemini 4 Hydrogen, Gemini 3.8 Flash」→ ['Gemini 4 Hydrogen', 'Gemini 3.8 Flash']"""
+    m = re.search(r"Models within this group:\s*(.+)", description or "")
+    return [x.strip().rstrip(".") for x in m.group(1).split(",") if x.strip()] if m else []
+
+
+def short_model_name(name: str) -> str:
+    """Gemini 4 Hydrogen → Hydrogen；Claude Opus 5.5 → Opus 5.5；其他原樣。"""
+    return re.sub(r"^(Gemini \d+(?:\.\d+)? |Claude )", "", name)
+
+
+def group_label(name: str, description: str | None) -> str:
+    base = GROUP_LABELS.get(name, name)
+    models = group_models(description)
+    return f"{base}（{'、'.join(short_model_name(m) for m in models)}）" if models else base
 
 
 def _new() -> dict:
@@ -56,14 +75,16 @@ def parse(out: dict, checked_at=None) -> dict:
     groups = []
     for group in data.get("groups") or []:
         gname = group.get("name", "")
-        groups.append({"name": gname, "description": group.get("description")})
+        glabel = group_label(gname, group.get("description"))
+        groups.append({"name": gname, "label": glabel, "description": group.get("description"),
+                       "models": group_models(group.get("description"))})
         for b in group.get("buckets") or []:
             frac = b.get("remaining_fraction")
             window = b.get("window") or "unknown"
             note = "此額度桶沒有數值（可能已停用）" if frac is None else None
             if frac is not None and window_not_started(b, checked_at):
                 note = "這個週期還沒開始用；從第一次使用起算，重置時間會在那時才固定"
-            label = f"{GROUP_LABELS.get(gname, gname)} {WINDOW_LABELS.get(window, b.get('name', window))}"
+            label = f"{glabel} {WINDOW_LABELS.get(window, b.get('name', window))}"
             bucket = make_bucket(
                 b.get("id") or f"{gname}:{b.get('name')}", label, window,
                 remaining_percent=None if frac is None else frac * 100, resets_at=b.get("reset_time"), note=note)
@@ -71,8 +92,7 @@ def parse(out: dict, checked_at=None) -> dict:
             res["buckets"].append(bucket)
     res["extra"]["groups"] = groups
     res["extra"]["usage_description"] = data.get("description")
-    res["notes"].append("同一組的模型共用每週與 5 小時額度，依 token 成本扣；"
-                        "便宜的模型（Flash）同樣額度能做更多事。Pro 方案的 Argon 另有獨立週額度。")
+    res["notes"].append("同一組的模型共用每週與 5 小時額度，依 token 成本扣；便宜的模型同樣額度能做更多事。")
     if not res["buckets"]:
         res["error"] = "/usage 有回應，但沒有任何額度桶"
         return res
