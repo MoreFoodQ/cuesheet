@@ -13,6 +13,14 @@
       "optional_buckets": ["seven_day_opus"]
     },
     {
+      "id": "sol",
+      "label": "Sol（Codex gpt-6.1-sol）",
+      "provider": "codex",
+      "models": ["gpt-6.1-sol"],
+      "buckets": ["codex.5h", "codex.weekly"],
+      "note": "與 Codex 其他模型共用 codex 這組額度"
+    },
+    {
       "id": "luna",
       "label": "Luna（Codex gpt-6-luna）",
       "provider": "codex",

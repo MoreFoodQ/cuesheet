@@ -1,10 +1,10 @@
 {
+  "default_order": ["claude", "sol", "argon"],
   "tasks": {
     "daily-notes": {
       "description": "整理今天新增的筆記，寫成摘要",
       "workdir": "C:\\path\\to\\your\\project",
       "prompt": "讀 notes 資料夾裡今天修改過的 .md 檔，用繁體中文整理成五點以內的摘要，寫到 summaries/今天日期.md（格式 YYYY-MM-DD.md）。檔案已存在就覆蓋。",
-      "order": ["claude", "luna", "flash"],
       "min_remaining_percent": 20,
       "timeout_minutes": 30,
       "handover_on": "quota"
@@ -13,13 +13,8 @@
       "description": "每週掃一次資料夾，列出超過 30 天沒動的檔案",
       "workdir": "C:\\path\\to\\your\\project",
       "prompt_file": "prompts/weekly-check.md",
-      "order": ["flash", "luna"],
+      "order": ["sol", "claude", "argon"],
       "success_file": "reports/stale-files.md"
-    }
-  },
-  "runners": {
-    "flash": {
-      "args": ["-p", "{prompt}", "--model", "gemini-3.8-flash-high", "--mode", "accept-edits"]
     }
   }
 }

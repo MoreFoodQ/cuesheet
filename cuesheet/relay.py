@@ -21,9 +21,16 @@ from .report import LEVEL_TEXT, fmt_pct, fmt_time
 
 # 預設的執行方式。{prompt} 與 {workdir} 會被替換；stdin=True 表示提示詞從標準輸入送進去
 # （Windows 上的 codex 是 .cmd 批次檔，從參數傳多行文字會被改壞）。
+# 預設接力是三家同等級的模型（推理強度都用 medium）。Flash、Luna 能力差太多，不當替補；
+# 要用的話在任務的 order 裡自己寫。
+DEFAULT_ORDER = ["claude", "sol", "argon"]
 DEFAULT_RUNNERS = {
     "claude": {"exe": "claude", "stdin": True,
-               "args": ["-p", "--permission-mode", "acceptEdits", "--output-format", "text"]},
+               "args": ["-p", "--model", "claude-opus-5-5", "--effort", "medium",
+                        "--permission-mode", "acceptEdits", "--output-format", "text"]},
+    "sol": {"exe": "codex", "stdin": True,
+            "args": ["exec", "--skip-git-repo-check", "-s", "workspace-write",
+                     "-m", "gpt-6.1-sol", "-c", "model_reasoning_effort=medium", "-C", "{workdir}"]},
     "luna": {"exe": "codex", "stdin": True,
              "args": ["exec", "--skip-git-repo-check", "-s", "workspace-write",
                       "-m", "gpt-6-luna", "-C", "{workdir}"]},
@@ -77,8 +84,7 @@ def load_task(config: dict, name: str, base: Path) -> dict:
     task["workdir"] = str(workdir if workdir.is_absolute() else (base / workdir).resolve())
     if not Path(task["workdir"]).is_dir():
         raise ConfigError(f"工作資料夾不存在：{task['workdir']}")
-    if not task.get("order"):
-        raise ConfigError(f"任務「{name}」沒有 order（代理順序）")
+    task["order"] = task.get("order") or (config.get("default_order") or DEFAULT_ORDER)
     task.setdefault("min_remaining_percent", 20)
     task.setdefault("timeout_minutes", 30)
     task.setdefault("handover_on", "quota")
@@ -316,8 +322,9 @@ def main(argv: list[str], *, root: Path, get_agents, recheck_agent=None, load_js
         return EXIT_CONFIG
 
     if args.list or not args.task:
+        default = config.get("default_order") or DEFAULT_ORDER
         for name, t in (config.get("tasks") or {}).items():
-            print(f"{name}：{t.get('description', '')}　順序 {' → '.join(t.get('order', []))}")
+            print(f"{name}：{t.get('description', '')}　順序 {' → '.join(t.get('order') or default)}")
         return EXIT_OK
 
     cfg = load_json(root / "config.json", {}) if load_json else {}

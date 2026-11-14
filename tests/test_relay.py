@@ -142,6 +142,14 @@ class RelayTest(unittest.TestCase):
         with self.assertRaises(relay.ConfigError):
             relay.build_command({"exe": PY, "args": ["-x"]}, "p", "W", {})
 
+    def test_default_order(self):
+        task = relay.load_task({"tasks": {"x": {"prompt": "p", "workdir": str(self.dir)}}}, "x", self.dir)
+        self.assertEqual(task["order"], ["claude", "sol", "argon"])
+        task = relay.load_task({"default_order": ["argon"], "tasks": {"x": {"prompt": "p", "workdir": str(self.dir)}}},
+                               "x", self.dir)
+        self.assertEqual(task["order"], ["argon"])
+        self.assertNotIn("flash", relay.DEFAULT_ORDER)
+
     def test_lock(self):
         path = self.dir / "t.lock"
         with relay.Lock(path, 60):
