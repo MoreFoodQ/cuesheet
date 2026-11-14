@@ -19,28 +19,44 @@ from pathlib import Path
 from .common import CREATE_NO_WINDOW, find_exe, now_iso, now_utc, parse_iso
 from .report import LEVEL_TEXT, fmt_pct, fmt_time
 
-# 預設的執行方式。{prompt} 與 {workdir} 會被替換；stdin=True 表示提示詞從標準輸入送進去
-# （Windows 上的 codex 是 .cmd 批次檔，從參數傳多行文字會被改壞）。
-# 預設接力是三家同等級的模型（推理強度都用 medium）。Flash、Luna 能力差太多，不當替補；
-# 要用的話在任務的 order 裡自己寫。
+# 接力用哪些模型寫在 runners.json（平台、模型、推理強度），這裡只負責把它組成指令。
+# runners.json 讀不到時才用這個順序。
 DEFAULT_ORDER = ["claude", "sol", "argon"]
-DEFAULT_RUNNERS = {
-    "claude": {"exe": "claude", "stdin": True,
-               "args": ["-p", "--model", "claude-opus-5-5", "--effort", "medium",
-                        "--permission-mode", "acceptEdits", "--output-format", "text"]},
-    "sol": {"exe": "codex", "stdin": True,
-            "args": ["exec", "--skip-git-repo-check", "-s", "workspace-write",
-                     "-m", "gpt-6.1-sol", "-c", "model_reasoning_effort=medium", "-C", "{workdir}"]},
-    "luna": {"exe": "codex", "stdin": True,
-             "args": ["exec", "--skip-git-repo-check", "-s", "workspace-write",
-                      "-m", "gpt-6-luna", "-C", "{workdir}"]},
-    "flash": {"exe": "agy", "stdin": False,
-              "args": ["-p", "{prompt}", "--model", "gemini-3.8-flash-medium", "--mode", "accept-edits"]},
-    "argon": {"exe": "agy", "stdin": False,
-              "args": ["-p", "{prompt}", "--model", "gemini-4-argon-medium", "--effort", "medium",
-                       "--mode", "accept-edits"]},
-}
 EXE_FALLBACKS = {"agy": (r"%LOCALAPPDATA%\agy\bin\agy.exe",)}
+
+
+def platform_runner(platform: str, model: str, effort: str | None) -> dict:
+    """依平台組出無人模式的指令。{prompt} 與 {workdir} 執行時才替換；
+    stdin=True 表示提示詞從標準輸入送入（Windows 上的 codex 是 .cmd，參數裡的多行文字會被改壞）。"""
+    if platform == "claude":
+        args = ["-p", "--model", model, *(["--effort", effort] if effort else []),
+                "--permission-mode", "acceptEdits", "--output-format", "text"]
+        return {"exe": "claude", "stdin": True, "args": args}
+    if platform == "codex":
+        args = ["exec", "--skip-git-repo-check", "-s", "workspace-write", "-m", model,
+                *(["-c", f"model_reasoning_effort={effort}"] if effort else []), "-C", "{workdir}"]
+        return {"exe": "codex", "stdin": True, "args": args}
+    if platform == "agy":
+        args = ["-p", "{prompt}", "--model", model, *(["--effort", effort] if effort else []),
+                "--mode", "accept-edits"]
+        return {"exe": "agy", "stdin": False, "args": args}
+    raise ConfigError(f"不認得的平台：{platform}（只支援 claude、codex、agy）")
+
+
+def resolve_runner(rid: str, r: dict) -> dict:
+    """runners.json 的一筆設定 → 可執行的 runner。直接寫 exe/args 的自訂 runner 原樣使用。"""
+    if "args" in r or "exe" in r:
+        return dict(r)
+    if not r.get("platform") or not r.get("model"):
+        raise ConfigError(f"代理 {rid} 需要 platform 與 model")
+    return {**platform_runner(r["platform"], r["model"], r.get("effort")), **r}
+
+
+# 模型不存在或沒有權限（2026-11-14 實測三家的訊息）
+MODEL_PATTERNS = re.compile(
+    r"issue with the selected model|unrecognized_model|model_not_found|model is not supported"
+    r"|not recognized as a known model",
+    re.IGNORECASE)
 
 # 三家 CLI 額度用完時的訊息（2026-11 從各 CLI 的紀錄與執行檔確認）
 QUOTA_PATTERNS = re.compile(
@@ -93,11 +109,12 @@ def load_task(config: dict, name: str, base: Path) -> dict:
     return task
 
 
-def runners_from(config: dict) -> dict:
-    runners = {k: dict(v) for k, v in DEFAULT_RUNNERS.items()}
+def runners_from(config: dict, base: dict | None = None) -> dict:
+    """runners.json（base）加上 relay.json 的 runners 覆寫，組成可執行的 runner。"""
+    merged = {k: dict(v) for k, v in ((base or {}).get("runners") or {}).items()}
     for key, val in (config.get("runners") or {}).items():
-        runners[key] = {**runners.get(key, {}), **val}
-    return runners
+        merged[key] = {**merged.get(key, {}), **val}
+    return {k: resolve_runner(k, v) for k, v in merged.items()}
 
 
 def build_command(runner: dict, prompt: str, workdir: str, cfg: dict) -> tuple[list[str], str | None]:
@@ -169,6 +186,11 @@ def _kill_tree(proc: subprocess.Popen) -> None:
 
 def hit_quota(result: dict) -> bool:
     return bool(QUOTA_PATTERNS.search(result["stdout"][-20000:] + "\n" + result["stderr"][-20000:]))
+
+
+def model_missing(result: dict) -> bool:
+    return result["exit_code"] != 0 and bool(
+        MODEL_PATTERNS.search(result["stdout"][-5000:] + "\n" + result["stderr"][-5000:]))
 
 
 def blocked_by_permission(result: dict) -> bool:
@@ -253,6 +275,14 @@ def run_task(task: dict, agents: dict, runners: dict, cfg: dict, data_dir: Path,
             echo(f"✓ {aid} 完成（{result['seconds']} 秒）")
             return run
 
+        if model_missing(result):
+            attempt["result"] = "model_missing"
+            run["attempts"].append(attempt)
+            echo(f"✗ {aid} 的模型 {runners[aid].get('model', '')} 不存在或沒有權限，換下一位。"
+                 "請執行 cue models 檢查 runners.json。")
+            prev = aid
+            continue
+
         quota = hit_quota(result)
         if not quota and recheck is not None:
             latest = recheck(runners[aid].get("quota_agent", aid))
@@ -303,6 +333,15 @@ def next_reset(task: dict, agents: dict, runners: dict) -> str | None:
 
 # ---------- 指令 ----------
 
+def load_runners_file(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except OSError:
+        return {}
+    except json.JSONDecodeError as exc:
+        raise ConfigError(f"{path.name} 格式錯誤：{exc}") from exc
+
+
 def main(argv: list[str], *, root: Path, get_agents, recheck_agent=None, load_json=None) -> int:
     ap = argparse.ArgumentParser(prog="cue relay", description="依額度接力執行 relay.json 裡的任務")
     ap.add_argument("task", nargs="?", help="任務名稱")
@@ -321,15 +360,21 @@ def main(argv: list[str], *, root: Path, get_agents, recheck_agent=None, load_js
         print(f"{config_path.name} 格式錯誤：{exc}")
         return EXIT_CONFIG
 
+    try:
+        base = load_runners_file(root / "runners.json")
+    except ConfigError as exc:
+        print(f"設定錯誤：{exc}")
+        return EXIT_CONFIG
+    config.setdefault("default_order", base.get("default_order") or DEFAULT_ORDER)
+
     if args.list or not args.task:
-        default = config.get("default_order") or DEFAULT_ORDER
         for name, t in (config.get("tasks") or {}).items():
-            print(f"{name}：{t.get('description', '')}　順序 {' → '.join(t.get('order') or default)}")
+            print(f"{name}：{t.get('description', '')}　順序 {' → '.join(t.get('order') or config['default_order'])}")
         return EXIT_OK
 
     cfg = load_json(root / "config.json", {}) if load_json else {}
-    runners = runners_from(config)
     try:
+        runners = runners_from(config, base)
         task = load_task(config, args.task, config_path.parent)
         lock = Lock(root / "data" / "relay" / f"{args.task}.lock", task["timeout_minutes"] * 120)
         with (lock if not args.dry_run else _NoLock()):
