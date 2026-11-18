@@ -32,16 +32,30 @@ def _claude_id_from_name(name: str) -> str | None:
 
 
 def parse_claude_models(models: list[dict]) -> list[dict]:
+    """Claude Code 2.1.311 起每個模型有 resolvedModel（完整 id）和 supportedEffortLevels，
+    顯示名稱只剩「Opus」，版本寫在 description 開頭（「Opus 5.5 · ...」）。舊版只有 value 和帶版本的 displayName。"""
     out, seen = [], set()
     for m in models:
         value, name = m.get("value", ""), m.get("displayName", "")
         if value == "default":
             continue
-        full = value if value.startswith("claude-") else (_claude_id_from_name(name) or value)
+        desc_name = (m.get("description") or "").split("·")[0].strip()
+        if _claude_id_from_name(desc_name):
+            name = desc_name
+        full = m.get("resolvedModel") or (value if value.startswith("claude-") else
+                                           (_claude_id_from_name(name) or value))
+        aliases = [value] if value != full else []
+        base = re.sub(r"\[[^\]]+\]$", "", full)  # claude-fable-5-2[1m]：1M 上下文版本
+        if base != full:
+            aliases.append(full)
+            full = base
         if full in seen:
             continue
         seen.add(full)
-        out.append({"id": full, "name": name, "aliases": [value] if value != full else []})
+        entry = {"id": full, "name": name, "aliases": aliases}
+        if m.get("supportedEffortLevels"):
+            entry["efforts"] = list(m["supportedEffortLevels"])
+        out.append(entry)
     return out
 
 
@@ -189,8 +203,8 @@ def check_runners(runners: dict, catalog: dict) -> list[dict]:
             row["status"] = "missing"
             row["suggestion"] = newest["id"] if newest else None
         effort = r.get("effort")
-        if platform == "codex" and effort and row["status"] != "missing":
-            m = next((x for x in models if x["id"] == model), None)
+        if effort and row["status"] != "missing":
+            m = next((x for x in models if model == x["id"] or model in x.get("aliases", [])), None)
             if m and m.get("efforts") and effort not in m["efforts"]:
                 row["note"] = f"{model} 不支援推理強度 {effort}（支援：{', '.join(m['efforts'])}）"
         rows.append(row)

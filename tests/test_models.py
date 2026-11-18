@@ -41,6 +41,32 @@ def catalog():
     }
 
 
+class ClaudeNewFormatTest(unittest.TestCase):
+    # Claude Code 2.1.311 的 initialize 回應（節錄）
+    RAW = [
+        {"value": "default", "resolvedModel": "claude-opus-5-5", "displayName": "Default (recommended)"},
+        {"value": "opus", "resolvedModel": "claude-opus-5-5", "displayName": "Opus",
+         "description": "Opus 5.5 · Best for everyday, complex tasks · $4/$20 per Mtok",
+         "supportedEffortLevels": ["low", "medium", "high", "xhigh", "max"]},
+        {"value": "claude-fable-5-2[1m]", "resolvedModel": "claude-fable-5-2[1m]", "displayName": "Fable",
+         "description": "Fable 5.2 · Most capable", "supportedEffortLevels": ["low", "medium"]},
+    ]
+
+    def test_resolved_model_and_efforts(self):
+        ms = {m["id"]: m for m in models.parse_claude_models(self.RAW)}
+        self.assertEqual(set(ms), {"claude-opus-5-5", "claude-fable-5-2"})
+        self.assertEqual(ms["claude-opus-5-5"]["name"], "Opus 5.5")
+        self.assertIn("opus", ms["claude-opus-5-5"]["aliases"])
+        self.assertIn("claude-fable-5-2[1m]", ms["claude-fable-5-2"]["aliases"])
+        cat = {"claude": {"status": "ok", "models": list(ms.values())}}
+        rows = {r["runner"]: r for r in models.check_runners(
+            {"a": {"platform": "claude", "model": "claude-opus-5-5", "effort": "medium"},
+             "b": {"platform": "claude", "model": "claude-fable-5-2", "effort": "max"}}, cat)}
+        self.assertEqual(rows["a"]["status"], "ok")
+        self.assertIsNone(rows["a"]["note"])
+        self.assertIn("max", rows["b"]["note"])
+
+
 class ParseTest(unittest.TestCase):
     def test_claude_alias_becomes_full_id(self):
         ids = [m["id"] for m in catalog()["claude"]["models"]]
