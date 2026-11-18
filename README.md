@@ -133,7 +133,30 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 
 結束碼：`0` 成功、`1` 任務本身失敗（不是額度問題）、`2` 沒有代理有額度、`3` 設定錯誤或同一任務正在執行。每次執行記在 `data/relay/history.jsonl`，各代理的完整輸出存在 `data/relay/logs/`。
 
-每一棒執行前後，`cue relay` 會各查一次該代理的額度，把差值記在 `data/relay/usage_samples.jsonl`，用來累積「每個模型做一件事吃掉幾 % 額度」。每筆樣本有一個標記，只有 `clean` 之後會算進成本：`stale_snapshot`（前後任一次不是即時資料）、`incomplete`（任務沒完成）、`window_reset`（執行期間額度重置）、`capped`（用量到 99% 以上）、`concurrent`（執行期間同一家 CLI 有其他 session 在寫紀錄，代表你可能同時在用）。目前只記錄，不影響接力怎麼選人。
+每一棒執行前後，`cue relay` 會各查一次該代理的額度，把差值記在 `data/relay/usage_samples.jsonl`，用來累積「每個模型做一件事吃掉幾 % 額度」。每筆樣本有一個標記，只有 `clean` 會算進成本：`stale_snapshot`（前後任一次不是即時資料）、`incomplete`（任務沒完成）、`window_reset`（執行期間額度重置）、`capped`（用量到 99% 以上）、`concurrent`（執行期間同一家 CLI 有其他 session 在寫紀錄，代表你可能同時在用）。`.\cue.ps1 relay --stats` 列出每個任務、每個模型的乾淨樣本數、平均每次吃掉幾 %，以及照目前剩餘額度估計還能跑幾次。
+
+### 依難度自動挑模型
+
+任務可以不寫 `order`，改寫難度，讓 `cue relay` 依等級（見「等級（cue tiers）」）自己挑。需要 AA 金鑰。
+
+```jsonc
+"weekly-research": {
+  "workdir": "C:\\path\\to\\project",
+  "prompt_file": "prompts/research.md",
+  "difficulty": "hard",       // hard、normal、easy
+  "requires_shell": false     // 選用：true 時只挑無人模式下能跑 shell 的平台（目前只有 Codex）
+}
+```
+
+| 難度 | 候選 | 誰先上 |
+|---|---|---|
+| `hard` | 等級不低於基準 | AA 分數高的先上 |
+| `normal` | 等級不低於基準 | 每個候選都有 5 筆以上乾淨樣本時，估計還能跑最多次的先上；不夠時照 `default_order` |
+| `easy` | 全部 | 最弱的先上，把高階模型的額度留給難的工作 |
+
+基準是 `default_order` 的第一位（預設 Opus 5.5 medium，L3），可以用任務的 `"baseline": "sol"` 換成別的代理。也可以直接寫 `"min_tier": "L2"`、`"max_tier": "L4"` 限定範圍。候選是 `runners.json` 裡所有代理；AA 沒有分數的會被排除，除非在 `tiers.local.json` 人工指定等級。額度用完的代理照樣跳過。
+
+`--dry-run` 會印出每個候選的等級、分數、樣本數和沒被選上的原因，執行紀錄也會存下這段說明。沒寫難度的任務完全照舊，不會自動挑。
 
 接力用哪些模型，寫在 repo 裡的 `runners.json`。預設順序是三家同等級的模型，推理強度都是 medium：
 
@@ -213,7 +236,7 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 
 ### 還沒做到的部分
 
-`cue models` 只會找「同系列」的新版本。不同系列之間誰跟誰同等級，可以用 `cue tiers` 看（見下一節），但接力順序還不會自動依等級調整，要你自己改 `runners.json`。
+`cue models` 只會找「同系列」的新版本。不同系列之間誰跟誰同等級，用 `cue tiers` 看；要接力依等級自動挑，在任務寫 `difficulty`（見「依難度自動挑模型」）。
 
 寫任務時要注意：
 

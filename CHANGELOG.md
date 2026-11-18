@@ -2,6 +2,14 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-11-18
+
+### Added
+
+- Tasks in `relay.json` can set `difficulty` (`hard`, `normal`, `easy`) or `min_tier` / `max_tier`, and `cue relay` picks agents from `runners.json` by AA tier. `hard` keeps the baseline tier or better, highest score first. `normal` keeps the baseline tier or better and, once every candidate has at least 5 clean samples, prefers the agent with the most runs left; otherwise it follows `default_order`. `easy` sends the weakest model first. Unranked models and platforms that cannot meet `requires_shell` are left out. Tasks without these fields work as before.
+- `cue relay --stats [task]`: clean sample counts, average quota used per run, and estimated runs left for each task and model.
+- `--dry-run` prints each candidate's tier, score, and samples, and why others were left out. The run history keeps the same lines.
+
 ## [0.7.0] - 2026-11-18
 
 ### Added

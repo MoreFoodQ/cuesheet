@@ -409,17 +409,32 @@ def load_runners_file(path: Path) -> dict:
 
 
 def main(argv: list[str], *, root: Path, get_agents, recheck_agent=None, load_json=None,
-         snapshot_fn=None, activity_fn=None) -> int:
+         snapshot_fn=None, activity_fn=None, route_fn=None) -> int:
+    """route_fn(task, runners, base_order, agents) → {"order", "lines", "fallback"}：任務寫了難度或等級時用來挑模型。"""
+    from . import route
+
     ap = argparse.ArgumentParser(prog="cue relay", description="依額度接力執行 relay.json 裡的任務")
     ap.add_argument("task", nargs="?", help="任務名稱")
     ap.add_argument("--config", default=str(root / "relay.json"), help="任務設定檔（預設 relay.json）")
     ap.add_argument("--list", action="store_true", help="列出任務")
     ap.add_argument("--dry-run", action="store_true", help="只顯示會派給誰、怎麼執行，不真的跑")
+    ap.add_argument("--stats", action="store_true", help="列出額度消耗樣本的統計（可加任務名稱只看一個）")
     args = ap.parse_args(argv)
+
+    if args.stats:
+        try:
+            runners = runners_from({}, load_runners_file(root / "runners.json"))
+        except ConfigError as exc:
+            print(f"設定錯誤：{exc}")
+            return EXIT_CONFIG
+        stats = route.usage_stats(route.load_samples(root / "data" / "relay" / "usage_samples.jsonl"))
+        agents = get_agents(list(runners), runners) if stats else {}
+        print(route.render_stats(stats, agents, runners, args.task))
+        return EXIT_OK
 
     config_path = Path(args.config)
     try:
-        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config = json.loads(config_path.read_text(encoding="utf-8-sig"))
     except OSError:
         print(f"找不到 {config_path}。請把 relay.example.json 複製成 relay.json 再編輯。")
         return EXIT_CONFIG
@@ -436,7 +451,9 @@ def main(argv: list[str], *, root: Path, get_agents, recheck_agent=None, load_js
 
     if args.list or not args.task:
         for name, t in (config.get("tasks") or {}).items():
-            print(f"{name}：{t.get('description', '')}　順序 {' → '.join(t.get('order') or config['default_order'])}")
+            how = (f"自動挑選（難度 {t.get('difficulty') or 'normal'}）" if route.wants_auto(t)
+                   else f"順序 {' → '.join(t.get('order') or config['default_order'])}")
+            print(f"{name}：{t.get('description', '')}　{how}")
         return EXIT_OK
 
     cfg = load_json(root / "config.json", {}) if load_json else {}
@@ -446,9 +463,24 @@ def main(argv: list[str], *, root: Path, get_agents, recheck_agent=None, load_js
         lock = Lock(root / "data" / "relay" / f"{args.task}.lock", task["timeout_minutes"] * 120)
         with (lock if not args.dry_run else _NoLock()):
             print(f"任務 {args.task}　{now_utc().astimezone():%m/%d %H:%M}")
-            agents = get_agents(task["order"], runners)
+            route_lines = None
+            if route.wants_auto(task):
+                if route_fn is None:
+                    raise ConfigError("這個任務要自動挑模型，但沒有提供等級資料")
+                agents = get_agents(list(runners), runners)
+                try:
+                    picked = route_fn(task, runners, config["default_order"], agents)
+                except ValueError as exc:
+                    raise ConfigError(str(exc)) from exc
+                task["order"], route_lines = picked["order"], picked["lines"]
+                for line in route_lines:
+                    print(line)
+            else:
+                agents = get_agents(task["order"], runners)
             run = run_task(task, agents, runners, cfg, root / "data", dry_run=args.dry_run,
                            recheck=recheck_agent, snapshot_fn=snapshot_fn, activity_fn=activity_fn)
+            if route_lines:
+                run["route"] = route_lines
     except ConfigError as exc:
         print(f"設定錯誤：{exc}")
         return EXIT_CONFIG

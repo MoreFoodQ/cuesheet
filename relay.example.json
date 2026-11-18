@@ -15,6 +15,13 @@
       "prompt_file": "prompts/weekly-check.md",
       "order": ["sol", "claude", "argon"],
       "success_file": "reports/stale-files.md"
+    },
+    "weekly-research": {
+      "description": "難的研究任務：依等級自動挑，只派 Opus 5.5 medium 同級或更強的模型",
+      "workdir": "C:\\path\\to\\your\\project",
+      "prompt_file": "prompts/research.md",
+      "difficulty": "hard",
+      "success_file": "reports/research.md"
     }
   }
 }

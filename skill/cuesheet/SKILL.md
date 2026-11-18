@@ -50,7 +50,7 @@ python "{{CUESHEET_HOME}}\cue.py" --max-age 600 --json
 
 ## 4. 排程任務
 
-排程或無人看管的任務用 `cue relay`，不要自己寫重試邏輯。預設接力順序是 `claude` → `sol` → `argon`，額度用完會自動換下一位。說明見 CueSheet 的 README「排程接力」一節。
+排程或無人看管的任務用 `cue relay`，不要自己寫重試邏輯。預設接力順序是 `claude` → `sol` → `argon`，額度用完會自動換下一位。任務也可以寫 `"difficulty": "hard"／"normal"／"easy"` 讓它依等級自動挑：難的只派基準等級以上、分數高的先上；簡單的從最弱的先上。要跑 shell 的任務加 `"requires_shell": true`（只有 Codex 做得到）。寫好先用 `--dry-run` 看挑選理由。說明見 CueSheet 的 README「排程接力」一節。
 
 重置時間要換成本機時間（台灣 UTC+8）再講。
 

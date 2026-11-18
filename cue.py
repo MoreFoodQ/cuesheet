@@ -295,8 +295,19 @@ def run_relay(argv: list[str]) -> int:
             return {"status": "unavailable", "buckets": {}, "error": f"agents.json 沒有代理 {quota_id}"}
         return usage.snapshot(collect([provider], cfg, 90)[provider], agent_buckets.get(quota_id, []))
 
+    def route_fn(task, runners, base_order, agents):
+        """任務寫了難度或等級時：讀 AA 快取（超過一天才重抓）、等級表與額度樣本，挑出上場順序。"""
+        from cuesheet import boards, rank, route, tiers
+        caches = boards.refresh(ROOT / "data", ["aa"], False, None, cfg)
+        if not caches["aa"].get("rows"):
+            return {"order": list(base_order), "fallback": True,
+                    "lines": [aa_status_line(caches) or "沒有 AA 資料", "改用固定順序：" + " → ".join(base_order)]}
+        rows = rank.apply_map(boards.all_rows(caches), rank.load_model_map(ROOT))
+        stats = route.usage_stats(route.load_samples(ROOT / "data" / "relay" / "usage_samples.jsonl"))
+        return route.auto_order(task, runners, base_order, rows, tiers.load(ROOT), stats, agents)
+
     return relay.main(argv, root=ROOT, get_agents=get_agents, recheck_agent=recheck, load_json=load_json,
-                      snapshot_fn=snapshot, activity_fn=usage.session_activity)
+                      snapshot_fn=snapshot, activity_fn=usage.session_activity, route_fn=route_fn)
 
 
 def main() -> int:

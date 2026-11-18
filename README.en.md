@@ -133,7 +133,30 @@ Agents with at least `min_remaining_percent` left go first, in order. Agents tha
 
 Exit codes: `0` success, `1` the task failed for a reason other than quota, `2` no agent had quota, `3` configuration error or the same task is already running. Every run is recorded in `data/relay/history.jsonl`, and each agent's full output is saved in `data/relay/logs/`.
 
-Before and after each attempt, `cue relay` reads the agent's quota and records the difference in `data/relay/usage_samples.jsonl`, to build up how much quota each model uses per task. Each sample has a status, and only `clean` samples will count toward cost: `stale_snapshot` (either reading was not live), `incomplete` (the task did not finish), `window_reset` (the quota window reset during the run), `capped` (usage reached 99% or more), and `concurrent` (another session of the same CLI wrote logs during the run, so you may have been using it at the same time). For now the samples are only recorded; they do not change how the relay picks agents.
+Before and after each attempt, `cue relay` reads the agent's quota and records the difference in `data/relay/usage_samples.jsonl`, to build up how much quota each model uses per task. Each sample has a status, and only `clean` samples count toward cost: `stale_snapshot` (either reading was not live), `incomplete` (the task did not finish), `window_reset` (the quota window reset during the run), `capped` (usage reached 99% or more), and `concurrent` (another session of the same CLI wrote logs during the run, so you may have been using it at the same time). `.\cue.ps1 relay --stats` lists, for each task and model, the number of clean samples, the average quota used per run, and how many more runs the current quota allows.
+
+### Picking models by difficulty
+
+Instead of an `order`, a task can give a difficulty, and `cue relay` picks agents by tier (see "Tiers (cue tiers)"). This needs an AA key.
+
+```jsonc
+"weekly-research": {
+  "workdir": "C:\\path\\to\\project",
+  "prompt_file": "prompts/research.md",
+  "difficulty": "hard",       // hard, normal, or easy
+  "requires_shell": false     // optional: true keeps only platforms that can run shell commands unattended (Codex for now)
+}
+```
+
+| Difficulty | Candidates | Who goes first |
+|---|---|---|
+| `hard` | Baseline tier or better | Highest AA score |
+| `normal` | Baseline tier or better | Most runs left, once every candidate has 5 or more clean samples; otherwise `default_order` |
+| `easy` | All | Weakest first, saving higher-tier quota for hard work |
+
+The baseline is the first agent in `default_order` (Opus 5.5 medium, L3, by default); set `"baseline": "sol"` on a task to use another agent. You can also set `"min_tier": "L2"` or `"max_tier": "L4"` directly. Candidates are all agents in `runners.json`. Agents without an AA score are left out unless `tiers.local.json` gives them a tier. Agents that are out of quota are still skipped.
+
+`--dry-run` prints each candidate's tier, score, and sample count, and why others were left out; the run history keeps the same lines. Tasks without a difficulty work exactly as before.
 
 The models the relay uses are listed in `runners.json` in the repository. The default order uses three models of the same tier, all at medium reasoning effort:
 
@@ -213,7 +236,7 @@ Add `--no-models` to skip the model lists. They are also skipped with `--agent` 
 
 ### Not done yet
 
-`cue models` only finds newer versions within a family. `cue tiers` (next section) shows which models across families are in the same tier, but the relay order does not follow tiers automatically yet; edit `runners.json` yourself.
+`cue models` only finds newer versions within a family. `cue tiers` shows which models across families are in the same tier; to have the relay pick by tier, give the task a `difficulty` (see "Picking models by difficulty").
 
 Things to keep in mind when writing tasks:
 
