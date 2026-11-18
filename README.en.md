@@ -138,7 +138,7 @@ The models the relay uses are listed in `runners.json` in the repository. The de
 | Order | Agent | Platform | Model | What it can do unattended |
 |---|---|---|---|---|
 | 1 | `claude` | Claude Code | `claude-opus-5-5` | Read and write files in the working folder; shell commands that need approval are denied |
-| 2 | `sol` | Codex CLI | `gpt-6.1-sol` | Run commands in a sandbox that can only write the working folder |
+| 2 | `sol` | Codex CLI | `gpt-6.2-sol` | Run commands in a sandbox that can only write the working folder |
 | 3 | `argon` | Antigravity `agy` | `gemini-4-argon-medium` | Read and write files; shell commands are denied |
 
 The three draw on separate quotas, so when one runs out the other two can still take over.
@@ -166,7 +166,7 @@ Platforms add, rename, and retire models over time. CueSheet keeps what it reads
   "default_order": ["claude", "sol", "argon"],
   "runners": {
     "claude": {"platform": "claude", "model": "claude-opus-5-5", "effort": "medium", "family": "opus"},
-    "sol": {"platform": "codex", "model": "gpt-6.1-sol", "effort": "medium", "family": "sol"},
+    "sol": {"platform": "codex", "model": "gpt-6.2-sol", "effort": "medium", "family": "sol"},
     "argon": {"platform": "agy", "model": "gemini-4-argon-medium", "effort": "medium", "family": "argon"}
   }
 }
@@ -188,7 +188,7 @@ Platforms add, rename, and retire models over time. CueSheet keeps what it reads
 
 Each relay model gets one of four states: `正常` (ok), `可升級` (a newer version of the same family exists), `不存在` (missing; the newest version of the same family is shown), and `未知` (the platform's model list could not be read). For Codex models, the reasoning effort is checked against the efforts the model supports.
 
-`--update` only moves to a newer version of the same family, for example `gpt-6-sol` to `gpt-6.1-sol` or `claude-opus-4-8` to `claude-opus-5-5`. The family and version come from the model id (`claude-<family>-<version>`, `gpt-<version>-<family>`, `gemini-<version>-<family>-<effort>`), and the highest version wins. The changes are printed, and `runners.json` is in Git, so a wrong change can be reverted.
+`--update` only moves to a newer version of the same family, for example `gpt-6-sol` to `gpt-6.2-sol` or `claude-opus-4-8` to `claude-opus-5-5`. The family and version come from the model id (`claude-<family>-<version>`, `gpt-<version>-<family>`, `gemini-<version>-<family>-<effort>`), and the highest version wins. The changes are printed, and `runners.json` is in Git, so a wrong change can be reverted.
 
 ### Alerts during normal quota checks
 
@@ -234,7 +234,7 @@ The Codex app server also has a method, `account/rateLimitResetCredit/consume`, 
 
 In local Codex session logs, every model, including `gpt-6-luna`, reports against the `codex` limit. OpenAI does not document this.
 
-Last tested with Claude Code 2.1.304, codex-cli 0.164.0, and `agy` on 2026-11-06.
+Last tested with Claude Code 2.1.311, codex-cli 0.170.0, and agy 1.5.11 on 2026-11-18.
 
 ## Configuration
 

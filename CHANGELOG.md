@@ -2,6 +2,16 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] - 2026-11-18
+
+### Fixed
+
+- Claude Code 2.1.311 changed the model list in its `initialize` response (display names without versions). CueSheet now reads `resolvedModel` and `supportedEffortLevels`, so Opus 5.5 is no longer reported as missing, and Claude efforts are checked too.
+
+### Changed
+
+- The `sol` relay runner now uses `gpt-6.2-sol`, which Codex CLI 0.170.0 offers. Older Codex CLI versions do not list it; update Codex CLI to get it.
+
 ## [0.4.0] - 2026-11-14
 
 ### Added
@@ -51,6 +61,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 - Claude Code skill and `install-skill.ps1`.
 - Unit tests on recorded CLI responses and a GitHub Actions workflow for Windows and Linux.
 
+[0.4.1]: https://github.com/MoreFoodQ/cuesheet/releases/tag/v0.4.1
 [0.4.0]: https://github.com/MoreFoodQ/cuesheet/releases/tag/v0.4.0
 [0.3.0]: https://github.com/MoreFoodQ/cuesheet/releases/tag/v0.3.0
 [0.2.0]: https://github.com/MoreFoodQ/cuesheet/releases/tag/v0.2.0

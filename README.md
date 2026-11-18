@@ -138,7 +138,7 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 | 順序 | 代理 | 平台 | 模型 | 無人模式下能做什麼 |
 |---|---|---|---|---|
 | 1 | `claude` | Claude Code | `claude-opus-5-5` | 讀寫工作資料夾裡的檔案；需要核准的 shell 指令會被拒絕 |
-| 2 | `sol` | Codex CLI | `gpt-6.1-sol` | 在沙盒裡執行指令，只能寫工作資料夾 |
+| 2 | `sol` | Codex CLI | `gpt-6.2-sol` | 在沙盒裡執行指令，只能寫工作資料夾 |
 | 3 | `argon` | Antigravity `agy` | `gemini-4-argon-medium` | 讀寫檔案；shell 指令會被拒絕 |
 
 三家的額度互不相干，所以一家用完，另外兩家還能接手。
@@ -166,7 +166,7 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
   "default_order": ["claude", "sol", "argon"],
   "runners": {
     "claude": {"platform": "claude", "model": "claude-opus-5-5", "effort": "medium", "family": "opus"},
-    "sol": {"platform": "codex", "model": "gpt-6.1-sol", "effort": "medium", "family": "sol"},
+    "sol": {"platform": "codex", "model": "gpt-6.2-sol", "effort": "medium", "family": "sol"},
     "argon": {"platform": "agy", "model": "gemini-4-argon-medium", "effort": "medium", "family": "argon"}
   }
 }
@@ -188,7 +188,7 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 
 每個接力模型會顯示四種狀態：`正常`、`可升級`（同系列有更新的版本）、`不存在`（平台上找不到，會列出同系列最新的版本）、`未知`（讀不到那家的模型清單）。Codex 的模型也會檢查推理強度是否支援。
 
-`--update` 只會換成同系列的新版本，例如 `gpt-6-sol` 換成 `gpt-6.1-sol`、`claude-opus-4-8` 換成 `claude-opus-5-5`。系列的判斷方式是從模型 id 拆出系列名和版本號（`claude-<系列>-<版本>`、`gpt-<版本>-<系列>`、`gemini-<版本>-<系列>-<強度>`），版本最大的就是最新版。改完會在畫面上列出改了哪些，`runners.json` 在 Git 裡，改錯可以還原。
+`--update` 只會換成同系列的新版本，例如 `gpt-6-sol` 換成 `gpt-6.2-sol`、`claude-opus-4-8` 換成 `claude-opus-5-5`。系列的判斷方式是從模型 id 拆出系列名和版本號（`claude-<系列>-<版本>`、`gpt-<版本>-<系列>`、`gemini-<版本>-<系列>-<強度>`），版本最大的就是最新版。改完會在畫面上列出改了哪些，`runners.json` 在 Git 裡，改錯可以還原。
 
 ### 平常查額度時的提醒
 
@@ -234,7 +234,7 @@ Codex app server 另有一個 `account/rateLimitResetCredit/consume` 方法，�
 
 在本機的 Codex session 紀錄裡，所有模型（包括 `gpt-6-luna`）都記在 `codex` 這組額度下。OpenAI 沒有公開說明這一點。
 
-最後測試版本：Claude Code 2.1.304、codex-cli 0.164.0、`agy`（2026-11-06）。
+最後測試版本：Claude Code 2.1.311、codex-cli 0.170.0、agy 1.5.11（2026-11-18）。
 
 ## 設定
 
