@@ -118,6 +118,78 @@ def run_models(argv: list[str]) -> int:
     return 0
 
 
+def run_boards(argv: list[str]) -> int:
+    from cuesheet import boards
+
+    ap = argparse.ArgumentParser(prog="cue boards", description="更新與查看免金鑰的榜單資料（快取在 data/boards/）")
+    ap.add_argument("--refresh", action="store_true", help="不管快取多新都重抓")
+    args = ap.parse_args(argv)
+    caches = boards.refresh(ROOT / "data", force=args.refresh)
+    status_text = {"ok": "正常", "stale": "舊資料", "unavailable": "無法取得"}
+    for source, c in caches.items():
+        count = len(c.get("rows") or c.get("prices") or [])
+        date = c.get("board_date") or "—"
+        fetched = parse_iso(c.get("fetched_at"))
+        fetched_text = f"{fetched.astimezone():%m/%d %H:%M}" if fetched else "—"
+        print(f"[{status_text[c['status']]}] {source}　{count} 筆　榜單日期 {date}　抓取 {fetched_text}")
+        print(f"    出處：{c['attribution']}")
+        if c.get("error"):
+            print(f"    錯誤：{c['error']}")
+    return 0 if all(c["status"] != "unavailable" for c in caches.values()) else 1
+
+
+def run_rank(argv: list[str]) -> int:
+    from cuesheet import boards, rank
+
+    ap = argparse.ArgumentParser(prog="cue rank", description="一個模型在各榜的位置，以及同等級或更強、更省的模型")
+    ap.add_argument("model", help="模型，例如 opus、claude-opus-5-5、gpt-6.2-sol、gemini-4-argon-medium、hydrogen")
+    ap.add_argument("--effort", help="推理強度（minimal/low/medium/high/xhigh/max）；不寫就用接力設定或 medium")
+    ap.add_argument("--margin", type=float, default=3.0, help="比基準低多少以內算相近（預設 3）")
+    ap.add_argument("--all", action="store_true", help="也列出你訂閱裡沒有的模型")
+    ap.add_argument("--refresh", action="store_true", help="重抓榜單資料")
+    ap.add_argument("--json", action="store_true", help="輸出 JSON")
+    args = ap.parse_args(argv)
+
+    cfg = load_json(ROOT / "config.json", {})
+    agents_cfg = load_json(ROOT / "agents.json", {"agents": []})
+    runners_cfg = load_json(ROOT / "runners.json", {}).get("runners", {})
+
+    def current_agents():
+        cached = load_json(ROOT / "data" / "latest.json", None)
+        gen = parse_iso((cached or {}).get("generated_at"))
+        if gen and now_utc() - gen < timedelta(minutes=60):
+            return {a["id"]: a for a in cached.get("agents", [])}
+        providers = collect(list(PROVIDERS), cfg, 90)
+        return {a["id"]: a for a in evaluate_agents(providers, agents_cfg)}
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        fut_caches = pool.submit(boards.refresh, ROOT / "data", None, args.refresh)
+        fut_catalog = pool.submit(models.collect_models, cfg, 90)
+        fut_agents = pool.submit(current_agents)
+        caches, catalog, agents = fut_caches.result(), fut_catalog.result(), fut_agents.result()
+
+    rows = rank.apply_map(boards.all_rows(caches), rank.load_model_map(ROOT))
+    key, embedded_effort, candidates = rank.resolve_model(args.model, catalog, rows)
+    if key is None:
+        print(f"找不到「{args.model}」。" + (f"你是指：{'、'.join(candidates[:10])}？" if candidates else ""))
+        return 3
+    runner_effort = next((r.get("effort") for r in runners_cfg.values()
+                          if r.get("model") and rank.split_cli_id(r.get("platform", ""), r["model"])[0] == key), None)
+    effort = args.effort or embedded_effort or runner_effort or "medium"
+    avail = rank.build_availability(catalog, runners_cfg, agents)
+    results = [rank.rank_board(b, rows, key, effort, avail, margin=args.margin, show_all=args.all)
+               for b in boards.BOARDS]
+    summary = rank.summarize(results)
+    if args.json:
+        print(json.dumps({"model": key, "effort": effort, "boards": results, "summary": summary},
+                         ensure_ascii=True, indent=2, default=list))
+        return 0
+    name = (avail.get(key) or {}).get("name") or key
+    label = f"{name}（{effort}）" + ("" if args.effort or embedded_effort else "　※沒有指定強度，用 " + effort)
+    print(rank.render(label, results, summary, boards.prices(caches), caches, args.margin), end="")
+    return 0
+
+
 def run_relay(argv: list[str]) -> int:
     from cuesheet import relay
 
@@ -157,6 +229,10 @@ def main() -> int:
         return run_relay(sys.argv[2:])
     if sys.argv[1:2] == ["models"]:
         return run_models(sys.argv[2:])
+    if sys.argv[1:2] == ["rank"]:
+        return run_rank(sys.argv[2:])
+    if sys.argv[1:2] == ["boards"]:
+        return run_boards(sys.argv[2:])
     ap = argparse.ArgumentParser(prog="cue", description="CueSheet：查看 Claude Code、Codex、agy 的剩餘額度")
     ap.add_argument("--version", action="version", version=f"CueSheet {__version__}")
     ap.add_argument("--json", action="store_true", help="輸出 JSON")

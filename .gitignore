@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 *.tmp
 relay.json
+model_map.local.json
