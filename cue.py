@@ -21,10 +21,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from cuesheet import __version__, claude, codex, gemini, models  # noqa: E402
+from cuesheet import __version__, claude, codex, gemini, models, usage, versions  # noqa: E402
 from cuesheet.common import now_iso, now_utc, parse_iso  # noqa: E402
-from cuesheet.report import (LEVEL_TEXT, RUNNER_STATUS, _pad, _width, evaluate_agents, fmt_pct,  # noqa: E402
-                             fmt_time, render, unmapped_buckets)
+from cuesheet.report import (LEVEL_TEXT, RUNNER_STATUS, VERSION_STATUS, _pad, _width,  # noqa: E402
+                             evaluate_agents, fmt_pct, fmt_time, render, unmapped_buckets)
 
 PROVIDERS = {"claude": claude, "codex": codex, "gemini": gemini}
 EXIT_CODES = {"ok": 0, "low": 1, "exhausted": 2, "unknown": 3}
@@ -46,13 +46,17 @@ def collect(names: list[str], cfg: dict, timeout: float) -> dict:
 
 
 def model_check(cfg: dict, timeout: float) -> dict:
-    """即時抓三家模型清單，檢查 runners.json，並記錄新模型。"""
-    catalog = models.collect_models(cfg, timeout)
+    """即時抓三家模型清單與 CLI 版本，檢查 runners.json，並記錄新模型。"""
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        fut_versions = pool.submit(versions.check_versions, cfg)
+        catalog = models.collect_models(cfg, timeout)
+        cli_versions = fut_versions.result()
     runners_cfg = load_json(ROOT / "runners.json", {})
     return {
         "catalog": catalog,
         "runners": models.check_runners(runners_cfg.get("runners", {}), catalog),
         "new": models.update_seen(catalog, SEEN_PATH),
+        "versions": cli_versions,
     }
 
 
@@ -70,6 +74,16 @@ def run_models(argv: list[str]) -> int:
 
     used = {r["model"] for r in check["runners"]}
     new_ids = {m["id"] for m in check["new"]}
+    print("■ CLI 版本")
+    for v in check["versions"]["clis"]:
+        state = VERSION_STATUS[v["status"]]
+        latest = f"，最新 {v['latest']}（{v['channel']}）" if v.get("latest") else ""
+        print(f"  [{state}] {v['label']}　已安裝 {v['installed'] or '—'}{latest}")
+        if v["status"] == "outdated":
+            print(f"      更新：{v['update']}")
+        if v.get("note"):
+            print(f"      {v['note']}")
+    print()
     print("■ 接力模型（runners.json）")
     rows = [("狀態", "代理", "平台", "模型", "說明")]
     for r in check["runners"]:
@@ -122,7 +136,18 @@ def run_relay(argv: list[str]) -> int:
     def recheck(quota_id):
         return agents_for({quota_id}).get(quota_id)
 
-    return relay.main(argv, root=ROOT, get_agents=get_agents, recheck_agent=recheck, load_json=load_json)
+    agent_buckets = {a["id"]: a.get("buckets", []) + a.get("optional_buckets", [])
+                     for a in agents_cfg.get("agents", [])}
+
+    def snapshot(quota_id):
+        """執行前後各呼叫一次：即時查這個代理那一家的額度（不用快取）。"""
+        provider = provider_of.get(quota_id)
+        if not provider:
+            return {"status": "unavailable", "buckets": {}, "error": f"agents.json 沒有代理 {quota_id}"}
+        return usage.snapshot(collect([provider], cfg, 90)[provider], agent_buckets.get(quota_id, []))
+
+    return relay.main(argv, root=ROOT, get_agents=get_agents, recheck_agent=recheck, load_json=load_json,
+                      snapshot_fn=snapshot, activity_fn=usage.session_activity)
 
 
 def main() -> int:

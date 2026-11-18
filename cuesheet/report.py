@@ -63,6 +63,7 @@ def unmapped_buckets(providers: dict, agents_cfg: dict) -> list[dict]:
 
 
 RUNNER_STATUS = {"ok": "正常", "upgradable": "可升級", "missing": "不存在", "unknown": "未知"}
+VERSION_STATUS = {"ok": "最新", "outdated": "有新版", "unknown": "未知"}
 
 
 def attention_items(report: dict) -> list[str]:
@@ -71,6 +72,10 @@ def attention_items(report: dict) -> list[str]:
         items.append(f"{b['label']}（{b['provider']}，剩 {fmt_pct(b['remaining_percent'])}）沒有代理在看。"
                      "要派工給它，請在 agents.json 加一個代理。")
     models = report.get("models") or {}
+    for v in (models.get("versions") or {}).get("clis", []):
+        if v["status"] == "outdated":
+            items.append(f"{v['label']} 有新版：{v['installed']} → {v['latest']}。新模型常要新版 CLI 才拿得到。"
+                         f"更新：{v['update']}")
     for m in models.get("new", []):
         items.append(f"新模型：{m['name']}（{m['id']}，{m['platform']}）")
     for r in models.get("runners", []):
