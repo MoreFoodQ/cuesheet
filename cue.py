@@ -304,7 +304,22 @@ def run_relay(argv: list[str]) -> int:
                     "lines": [aa_status_line(caches) or "沒有 AA 資料", "改用固定順序：" + " → ".join(base_order)]}
         rows = rank.apply_map(boards.all_rows(caches), rank.load_model_map(ROOT))
         stats = route.usage_stats(route.load_samples(ROOT / "data" / "relay" / "usage_samples.jsonl"))
-        return route.auto_order(task, runners, base_order, rows, tiers.load(ROOT), stats, agents)
+        return route.auto_order(task, runners, base_order, rows, tiers.load(ROOT), stats, agents,
+                                optional_unavailable(runners))
+
+    def optional_unavailable(runners):
+        """選用的代理（runners.json 寫 optional）要確認使用者帳號真的有這個模型，沒有就不列入候選。"""
+        optional = {rid: r for rid, r in runners.items() if r.get("optional")}
+        if not optional:
+            return {}
+        catalog = models.collect_models(cfg, 90)
+        out = {}
+        for row in models.check_runners(optional, catalog):
+            if row["status"] == "not_offered":
+                out[row["runner"]] = "你的帳號沒有這個模型（選用）"
+            elif row["status"] == "unknown":
+                out[row["runner"]] = "讀不到模型清單，無法確認帳號有沒有這個模型（選用）"
+        return out
 
     return relay.main(argv, root=ROOT, get_agents=get_agents, recheck_agent=recheck, load_json=load_json,
                       snapshot_fn=snapshot, activity_fn=usage.session_activity, route_fn=route_fn)

@@ -2,7 +2,7 @@
   "default_order": [
     "claude",
     "sol",
-    "argon"
+    "hydrogen"
   ],
   "runners": {
     "claude": {
@@ -16,6 +16,12 @@
       "model": "gpt-6.2-sol",
       "effort": "medium",
       "family": "sol"
+    },
+    "hydrogen": {
+      "platform": "agy",
+      "model": "gemini-4-hydrogen-high",
+      "effort": "high",
+      "family": "hydrogen"
     },
     "argon": {
       "platform": "agy",
@@ -32,6 +38,14 @@
       "platform": "agy",
       "model": "gemini-3.8-flash-medium",
       "family": "flash"
+    },
+    "carbon": {
+      "platform": "agy",
+      "model": "gemini-4-carbon-medium",
+      "effort": "medium",
+      "family": "carbon",
+      "optional": true,
+      "quota_agent": "hydrogen"
     }
   }
 }

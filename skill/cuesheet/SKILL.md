@@ -31,14 +31,14 @@ python "{{CUESHEET_HOME}}\cue.py" --max-age 600 --json
 
 要知道「某個分數上下有哪些模型能用」，用 `python "{{CUESHEET_HOME}}\cue.py" tiers`：依 Artificial Analysis 指數分成 L1（55 以上）、L2（50）、L3（45）、L4（35）、L5，只列使用者訂閱裡有的模型。難的任務找等級不低於目前模型的；簡單的任務從低等級往上找，省下高階模型的額度。回報時要說分數來自 Artificial Analysis。
 
-替補只找同等級的模型：Claude Opus 5.5 medium、Sol（Codex，模型以 runners.json 為準）medium、Argon medium。三者互為替補（依 AA，Sol 6.2 medium 比另外兩個高一級，當替補只會更強）。
+替補只找同等級的模型：Claude Opus 5.5 medium、Sol（Codex，模型以 runners.json 為準）medium、Hydrogen high（agy）。三者互為替補。Argon medium 分數比 Hydrogen high 低、每題成本又高一倍，已不在預設順序；使用者指定時才用。帳號裡有 Carbon 的話，它比這三個都強（AA 58.3），適合最難的工作。
 
 規則：
 - Flash 不當任何代理的替補。它只接本來就適合它的簡單工作；別人額度不夠時，不要降級改派 Flash。
 - `level` 是 `exhausted` 的代理不要派工。改派同等級的替補，並在回覆裡說一句為什麼換。
 - `low`（低於 20%）的代理只派短任務。大任務改派同等級的替補，或等 `resets_at` 之後再派。
 - Sol 和 Luna 共用 Codex 的 `codex` 額度，一個偏低另一個也一樣，不能互相替補。
-- Argon 同時受「Gemini 組」與「Argon 專屬週額度」限制。
+- Argon 同時受「Gemini 組」與「Argon 專屬週額度」限制。Hydrogen 只受 Gemini 組限制，和 Flash 共用。
 - `agy-3p`（agy 裡的 Claude／GPT-OSS）額度很少，除非使用者指定，否則不用。
 - `claude` 偏低時要先告訴使用者，因為主控停了，整個流程都會停。
 
@@ -50,7 +50,7 @@ python "{{CUESHEET_HOME}}\cue.py" --max-age 600 --json
 
 ## 4. 排程任務
 
-排程或無人看管的任務用 `cue relay`，不要自己寫重試邏輯。預設接力順序是 `claude` → `sol` → `argon`，額度用完會自動換下一位。任務也可以寫 `"difficulty": "hard"／"normal"／"easy"` 讓它依等級自動挑：難的只派基準等級以上、分數高的先上；簡單的從最弱的先上。要跑 shell 的任務加 `"requires_shell": true`（只有 Codex 做得到）。寫好先用 `--dry-run` 看挑選理由。說明見 CueSheet 的 README「排程接力」一節。
+排程或無人看管的任務用 `cue relay`，不要自己寫重試邏輯。預設接力順序是 `claude` → `sol` → `hydrogen`，額度用完會自動換下一位。任務也可以寫 `"difficulty": "hard"／"normal"／"easy"` 讓它依等級自動挑：難的只派基準等級以上、分數高的先上；簡單的從最弱的先上。要跑 shell 的任務加 `"requires_shell": true`（只有 Codex 做得到）。寫好先用 `--dry-run` 看挑選理由。說明見 CueSheet 的 README「排程接力」一節。
 
 重置時間要換成本機時間（台灣 UTC+8）再講。
 

@@ -62,7 +62,8 @@ def unmapped_buckets(providers: dict, agents_cfg: dict) -> list[dict]:
             for b in p.get("buckets", []) if b["id"] not in used]
 
 
-RUNNER_STATUS = {"ok": "正常", "upgradable": "可升級", "missing": "不存在", "unknown": "未知"}
+RUNNER_STATUS = {"ok": "正常", "upgradable": "可升級", "missing": "不存在", "unknown": "未知",
+                 "not_offered": "帳號沒有（選用）"}
 VERSION_STATUS = {"ok": "最新", "outdated": "有新版", "unknown": "未知"}
 
 

@@ -199,6 +199,9 @@ def check_runners(runners: dict, catalog: dict) -> list[dict]:
             row["status"] = "ok"
             if newest and info and parse_family(platform, newest["id"])["version"] > info["version"]:
                 row["status"], row["suggestion"] = "upgradable", newest["id"]
+        elif r.get("optional"):
+            # 選用的代理（例如只有部分帳號拿得到的 Carbon）：帳號沒有就安靜略過，不提醒、不建議替換
+            row["status"] = "not_offered"
         else:
             row["status"] = "missing"
             row["suggestion"] = newest["id"] if newest else None

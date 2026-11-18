@@ -116,6 +116,13 @@ class CheckRunnersTest(unittest.TestCase):
         self.assertEqual(rows["b"]["suggestion"], "gemini-3.8-flash-medium")
         self.assertIsNone(rows["c"]["suggestion"])
 
+    def test_optional_runner_not_offered_is_quiet(self):
+        rows = self.check({"carbon": {"platform": "agy", "model": "gemini-4-carbon-medium", "optional": True}})
+        self.assertEqual(rows["carbon"]["status"], "not_offered")
+        self.assertIsNone(rows["carbon"]["suggestion"])
+        report = {"models": {"runners": list(rows.values()), "catalog": {}}}
+        self.assertEqual(attention_items(report), [])
+
     def test_unsupported_effort(self):
         rows = self.check({"luna": {"platform": "codex", "model": "gpt-6-luna", "effort": "ultra"}})
         self.assertIn("ultra", rows["luna"]["note"])
@@ -198,9 +205,13 @@ class RelayModelTest(unittest.TestCase):
     def test_repo_runners_file_is_valid(self):
         base = json.loads((ROOT / "runners.json").read_text(encoding="utf-8"))
         runners = relay.runners_from({}, base)
-        self.assertEqual(base["default_order"], ["claude", "sol", "argon"])
+        self.assertEqual(base["default_order"], ["claude", "sol", "hydrogen"])
         for rid in base["default_order"]:
             self.assertIn(rid, runners)
+            self.assertFalse(base["runners"][rid].get("optional"))  # 預設順序不能放選用代理
+        agents = {a["id"] for a in json.loads((ROOT / "agents.json").read_text(encoding="utf-8"))["agents"]}
+        for rid, r in base["runners"].items():
+            self.assertIn(r.get("quota_agent", rid), agents)  # 每個代理都對得到額度
 
 
 if __name__ == "__main__":

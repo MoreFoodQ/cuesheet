@@ -158,17 +158,21 @@ The baseline is the first agent in `default_order` (Opus 5.5 medium, L3, by defa
 
 `--dry-run` prints each candidate's tier, score, and sample count, and why others were left out; the run history keeps the same lines. Tasks without a difficulty work exactly as before.
 
-The models the relay uses are listed in `runners.json` in the repository. The default order uses three models of the same tier, all at medium reasoning effort:
+The models the relay uses are listed in `runners.json` in the repository. The default order uses one model from each platform, with similar Artificial Analysis scores:
 
 | Order | Agent | Platform | Model | What it can do unattended |
 |---|---|---|---|---|
 | 1 | `claude` | Claude Code | `claude-opus-5-5` | Read and write files in the working folder; shell commands that need approval are denied |
 | 2 | `sol` | Codex CLI | `gpt-6.2-sol` | Run commands in a sandbox that can only write the working folder |
-| 3 | `argon` | Antigravity `agy` | `gemini-4-argon-medium` | Read and write files; shell commands are denied |
+| 3 | `hydrogen` | Antigravity `agy` | `gemini-4-hydrogen-high` | Read and write files; shell commands are denied |
 
 The three draw on separate quotas, so when one runs out the other two can still take over.
 
-`runners.json` also defines `luna` (Codex `gpt-6-luna`) and `flash` (agy `gemini-3.8-flash-medium`), which are not in the default order: Luna shares the Codex quota with Sol, and Flash cannot do the work of the other three. Add them to a task's `order` if you want them.
+The third slot used to be Argon medium (AA 47.6). Since 2026-11-18 it is Hydrogen high: AA 50.8, Arena Agent 14.9% (Argon high: 10.0%), CursorBench 54.3% (Argon medium: 52.8%), at $1.87 per task, less than half of Argon medium ($4.31). Hydrogen draws only on the Gemini group quota, not Argon's own weekly quota, but it shares that group with Flash. Use Hydrogen at high; at medium it scores 41.2.
+
+`runners.json` also defines `argon` (agy `gemini-4-argon-medium`), `luna` (Codex `gpt-6-luna`), `flash` (agy `gemini-3.8-flash-medium`), and `carbon` (agy `gemini-4-carbon-medium`), which are not in the default order: Luna shares the Codex quota with Sol, and Flash cannot do the work of the other three. Add them to a task's `order`, or let difficulty-based picking consider them.
+
+`carbon` is marked optional (`"optional": true`) because not every account has Gemini 4 Carbon. Without it, `cue models` shows `帳號沒有（選用）` (not in your account), with no warning or replacement suggestion, and difficulty-based picking leaves it out. With it, its AA index of 58.3 (L1) puts it first for hard tasks. Carbon follows the Gemini group quota for now; if it has a quota of its own, `cue` will list an unwatched quota under "needs attention", and you can add an agent for it in `agents.json`.
 
 If a model no longer exists (renamed or retired), each CLI returns a specific error. `cue relay` recognizes these errors, records the attempt as "model missing", hands the task to the next agent, and asks you to run `cue models`.
 
@@ -188,11 +192,13 @@ Platforms add, rename, and retire models over time. CueSheet keeps what it reads
 
 ```json
 {
-  "default_order": ["claude", "sol", "argon"],
+  "default_order": ["claude", "sol", "hydrogen"],
   "runners": {
     "claude": {"platform": "claude", "model": "claude-opus-5-5", "effort": "medium", "family": "opus"},
     "sol": {"platform": "codex", "model": "gpt-6.2-sol", "effort": "medium", "family": "sol"},
-    "argon": {"platform": "agy", "model": "gemini-4-argon-medium", "effort": "medium", "family": "argon"}
+    "hydrogen": {"platform": "agy", "model": "gemini-4-hydrogen-high", "effort": "high", "family": "hydrogen"},
+    "carbon": {"platform": "agy", "model": "gemini-4-carbon-medium", "effort": "medium", "family": "carbon",
+               "optional": true, "quota_agent": "hydrogen"}
   }
 }
 ```
@@ -201,6 +207,8 @@ Platforms add, rename, and retire models over time. CueSheet keeps what it reads
 - `model`: the model id, exactly as `cue models` lists it.
 - `effort`: reasoning effort, optional. `agy` model ids already include an effort, such as `-medium`.
 - `family`: the model family, which `cue models` uses to find newer versions.
+- `optional`: skip quietly, with no warning, when your account does not have the model.
+- `quota_agent`: which agent in `agents.json` holds this runner's quota; defaults to the runner id.
 - Your `relay.json` can also contain `runners`. List only the fields to change; the rest comes from `runners.json`. For example, to run one task on Fable: `"runners": {"claude": {"model": "claude-fable-5-2"}}`.
 
 ### Checking and updating
@@ -230,7 +238,7 @@ Add `--no-models` to skip the model lists. They are also skipped with `--agent` 
 
 1. Run `.\cue.ps1 models` and look for relay models marked `不存在` or `可升級`.
 2. For a newer version of the same family, run `.\cue.ps1 models --update`.
-3. To switch to a different family (for example Argon to Hydrogen), edit `model` and `family` in `runners.json`, copying the model id from `cue models`.
+3. To switch to a different family (for example Hydrogen to Carbon), edit `model` and `family` in `runners.json`, copying the model id from `cue models`.
 4. If a new model has its own quota, add an agent to `agents.json` with the quota id from `providers` in `cue --json`. To make a relay runner follow that quota, add `"quota_agent": "<agent id>"` to its entry in `runners.json`.
 5. Run `.\cue.ps1 relay <task> --dry-run` to check the command.
 
@@ -347,7 +355,7 @@ Last tested with Claude Code 2.1.311, codex-cli 0.170.0, and agy 1.5.11 on 2026-
 
 ## Configuration
 
-`agents.json` maps agents to quota windows and sets the low and exhausted thresholds. The included agents are `claude`, `sol`, `luna`, `argon`, `flash`, and `agy-3p`. Windows listed under `buckets` must exist in the provider's output; windows under `optional_buckets` count only when present.
+`agents.json` maps agents to quota windows and sets the low and exhausted thresholds. The included agents are `claude`, `sol`, `luna`, `hydrogen`, `argon`, `flash`, and `agy-3p`. Windows listed under `buckets` must exist in the provider's output; windows under `optional_buckets` count only when present.
 
 `runners.json` sets the relay models and the default order; see "Changing models" above.
 

@@ -29,6 +29,14 @@
       "note": "與 Codex 其他模型共用 codex 這組額度"
     },
     {
+      "id": "hydrogen",
+      "label": "Gemini 4 Hydrogen（agy）",
+      "provider": "gemini",
+      "models": ["gemini-4-hydrogen-medium", "gemini-4-hydrogen-high", "gemini-4-hydrogen-xhigh"],
+      "buckets": ["gemini-5h", "gemini-weekly"],
+      "note": "與 Flash 共用 Gemini 組額度；接力的 Carbon（選用）也先看這組"
+    },
+    {
       "id": "argon",
       "label": "Gemini 4 Argon（agy）",
       "provider": "gemini",

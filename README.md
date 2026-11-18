@@ -158,17 +158,21 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 
 `--dry-run` 會印出每個候選的等級、分數、樣本數和沒被選上的原因，執行紀錄也會存下這段說明。沒寫難度的任務完全照舊，不會自動挑。
 
-接力用哪些模型，寫在 repo 裡的 `runners.json`。預設順序是三家同等級的模型，推理強度都是 medium：
+接力用哪些模型，寫在 repo 裡的 `runners.json`。預設順序是三家各一個、Artificial Analysis 指數相近的模型：
 
 | 順序 | 代理 | 平台 | 模型 | 無人模式下能做什麼 |
 |---|---|---|---|---|
 | 1 | `claude` | Claude Code | `claude-opus-5-5` | 讀寫工作資料夾裡的檔案；需要核准的 shell 指令會被拒絕 |
 | 2 | `sol` | Codex CLI | `gpt-6.2-sol` | 在沙盒裡執行指令，只能寫工作資料夾 |
-| 3 | `argon` | Antigravity `agy` | `gemini-4-argon-medium` | 讀寫檔案；shell 指令會被拒絕 |
+| 3 | `hydrogen` | Antigravity `agy` | `gemini-4-hydrogen-high` | 讀寫檔案；shell 指令會被拒絕 |
 
 三家的額度互不相干，所以一家用完，另外兩家還能接手。
 
-`runners.json` 另外有 `luna`（Codex `gpt-6-luna`）和 `flash`（agy `gemini-3.8-flash-medium`），但不在預設順序裡：Luna 和 Sol 共用 Codex 的額度，Flash 的能力替代不了其他三個。需要的話，在任務的 `order` 裡自己加。
+第三棒原本是 Argon medium（AA 47.6）。2026-11-18 起改成 Hydrogen high：AA 50.8、Arena Agent 14.9%（Argon high 只有 10.0%）、CursorBench 54.3%（Argon medium 52.8%），每題成本 $1.87，不到 Argon medium（$4.31）的一半。Hydrogen 只扣 Gemini 組額度，不扣 Argon 專屬週額度，但會和 Flash 搶同一組。Hydrogen 要用 high，medium 只有 41.2。
+
+`runners.json` 另外有 `argon`（agy `gemini-4-argon-medium`）、`luna`（Codex `gpt-6-luna`）、`flash`（agy `gemini-3.8-flash-medium`）和 `carbon`（agy `gemini-4-carbon-medium`），都不在預設順序裡：Luna 和 Sol 共用 Codex 的額度，Flash 的能力替代不了其他三個。需要的話，在任務的 `order` 裡自己加，或讓依難度自動挑模型時列入候選。
+
+`carbon` 標成選用（`"optional": true`），因為不是每個帳號都有 Gemini 4 Carbon。帳號沒有時，`cue models` 顯示「帳號沒有（選用）」，不會提醒也不會建議替換，依難度自動挑時也會排除。帳號有的話，它的 AA 指數 58.3（L1），難的任務會優先派給它。Carbon 的額度目前先看 Gemini 組；如果它有自己的額度，`cue` 的「需要注意」會提示有沒人在看的額度，請在 `agents.json` 加一個代理。
 
 接力時如果模型不存在（改名或下架），三家都會回特定的錯誤訊息。`cue relay` 認得這些訊息，會把這一棒記成「模型不存在」並換下一位，同時提醒你執行 `cue models`。
 
@@ -188,11 +192,13 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 
 ```json
 {
-  "default_order": ["claude", "sol", "argon"],
+  "default_order": ["claude", "sol", "hydrogen"],
   "runners": {
     "claude": {"platform": "claude", "model": "claude-opus-5-5", "effort": "medium", "family": "opus"},
     "sol": {"platform": "codex", "model": "gpt-6.2-sol", "effort": "medium", "family": "sol"},
-    "argon": {"platform": "agy", "model": "gemini-4-argon-medium", "effort": "medium", "family": "argon"}
+    "hydrogen": {"platform": "agy", "model": "gemini-4-hydrogen-high", "effort": "high", "family": "hydrogen"},
+    "carbon": {"platform": "agy", "model": "gemini-4-carbon-medium", "effort": "medium", "family": "carbon",
+               "optional": true, "quota_agent": "hydrogen"}
   }
 }
 ```
@@ -201,6 +207,8 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 - `model`：模型 id，要跟 `cue models` 列出來的一樣。
 - `effort`：推理強度，可省略。`agy` 的模型 id 本身就帶強度（例如 `-medium`）。
 - `family`：系列名稱，`cue models` 用它找同系列的新版本。
+- `optional`：選用。帳號裡沒有這個模型時安靜略過，不提醒。
+- `quota_agent`：看 `agents.json` 裡哪個代理的額度，預設和代理 id 相同。
 - 自己的 `relay.json` 也可以寫 `runners`，只寫要改的欄位就好，其餘沿用 `runners.json`。例如只想讓某個任務改用 Fable：`"runners": {"claude": {"model": "claude-fable-5-2"}}`。
 
 ### 檢查與更新
@@ -230,7 +238,7 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 
 1. 執行 `.\cue.ps1 models`，看哪個接力模型是 `不存在` 或 `可升級`。
 2. 同系列的新版本：執行 `.\cue.ps1 models --update`。
-3. 想換成別的系列（例如 Argon 換成 Hydrogen）：直接編輯 `runners.json` 的 `model` 和 `family`，模型 id 照 `cue models` 列出來的抄。
+3. 想換成別的系列（例如 Hydrogen 換成 Carbon）：直接編輯 `runners.json` 的 `model` 和 `family`，模型 id 照 `cue models` 列出來的抄。
 4. 新模型有自己的額度時：在 `agents.json` 加一個代理，`buckets` 填 `cue --json` 裡 `providers` 列出的額度 id；如果要讓接力看這個額度，在 `runners.json` 那一筆加 `"quota_agent": "<代理 id>"`。
 5. 執行 `.\cue.ps1 relay <任務> --dry-run` 確認指令正確。
 
@@ -347,7 +355,7 @@ Codex app server 另有一個 `account/rateLimitResetCredit/consume` 方法，�
 
 ## 設定
 
-`agents.json` 設定代理和時間窗的對應，以及偏低、用完的門檻。內建的代理是 `claude`、`sol`、`luna`、`argon`、`flash`、`agy-3p`。列在 `buckets` 的時間窗必須存在；列在 `optional_buckets` 的時間窗有出現才計算。
+`agents.json` 設定代理和時間窗的對應，以及偏低、用完的門檻。內建的代理是 `claude`、`sol`、`luna`、`hydrogen`、`argon`、`flash`、`agy-3p`。列在 `buckets` 的時間窗必須存在；列在 `optional_buckets` 的時間窗有出現才計算。
 
 `runners.json` 設定接力用的模型與預設順序，格式見上方「換模型」一節。
 

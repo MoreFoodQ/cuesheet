@@ -87,6 +87,17 @@ class RouteTest(unittest.TestCase):
         res = route.auto_order(task, runners, BASE, ROWS, cfg, {}, AGENTS)
         self.assertIn("new", res["order"])
 
+    def test_unavailable_optional_runner_excluded(self):
+        runners = {**RUNNERS, "carbon": {"platform": "agy", "model": "gemini-4-carbon-medium", "effort": "medium",
+                                         "optional": True}}
+        rows = ROWS + [row("gemini-4-carbon", "medium", 58.3, 6.59)]
+        task = {"name": "t", "difficulty": "hard"}
+        res = route.auto_order(task, runners, BASE, rows, self.cfg, {}, AGENTS, {"carbon": "你的帳號沒有這個模型"})
+        self.assertNotIn("carbon", res["order"])
+        self.assertTrue(any("✗ carbon　你的帳號沒有" in line for line in res["lines"]))
+        res = route.auto_order(task, runners, BASE, rows, self.cfg, {}, AGENTS)
+        self.assertEqual(res["order"][0], "carbon")  # 帳號有的人，難的任務會先派 Carbon
+
     def test_bad_difficulty(self):
         with self.assertRaises(ValueError):
             self.order({"difficulty": "extreme"})

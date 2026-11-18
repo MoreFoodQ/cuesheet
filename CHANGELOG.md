@@ -2,6 +2,17 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.9.0] - 2026-11-18
+
+### Changed
+
+- The default relay order is now Claude Opus 5.5 medium → GPT-6.2 Sol medium → Gemini 4 Hydrogen high. Hydrogen high replaces Argon medium: it scores higher on AA (50.8 vs 47.6), Arena Agent, and CursorBench, costs less than half per task, and draws only on the Gemini group quota. Argon stays available as a runner.
+
+### Added
+
+- `hydrogen` agent in `agents.json` and runner in `runners.json`.
+- Optional runners (`"optional": true`). When your account does not offer the model, `cue models` shows it as not offered, with no warning, and difficulty-based picking leaves it out. `runners.json` includes Gemini 4 Carbon as an optional runner.
+
 ## [0.8.0] - 2026-11-18
 
 ### Added

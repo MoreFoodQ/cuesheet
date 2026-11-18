@@ -22,7 +22,7 @@ from .report import LEVEL_TEXT, fmt_pct, fmt_time
 
 # 接力用哪些模型寫在 runners.json（平台、模型、推理強度），這裡只負責把它組成指令。
 # runners.json 讀不到時才用這個順序。
-DEFAULT_ORDER = ["claude", "sol", "argon"]
+DEFAULT_ORDER = ["claude", "sol", "hydrogen"]
 EXE_FALLBACKS = {"agy": (r"%LOCALAPPDATA%\agy\bin\agy.exe",)}
 
 

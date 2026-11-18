@@ -104,8 +104,11 @@ def tier_index(tier: str, tier_cfg: dict) -> int | None:
 # ---------- 挑選 ----------
 
 def auto_order(task: dict, runners: dict, base_order: list[str], rows: list[dict], tier_cfg: dict,
-               stats: dict, agents: dict) -> dict:
-    """回傳 {"order": [...], "lines": [說明], "fallback": bool}。"""
+               stats: dict, agents: dict, unavailable: dict | None = None) -> dict:
+    """回傳 {"order": [...], "lines": [說明], "fallback": bool}。
+
+    unavailable：{代理: 原因}，例如選用代理的模型不在使用者帳號裡。"""
+    unavailable = unavailable or {}
     difficulty = task.get("difficulty") or "normal"
     if difficulty not in DIFFICULTIES:
         raise ValueError(f"difficulty 只能是 {'、'.join(DIFFICULTIES)}")
@@ -133,7 +136,9 @@ def auto_order(task: dict, runners: dict, base_order: list[str], rows: list[dict
     for rid, r in runners.items():
         ti = info[rid]
         idx = tier_index(ti["tier"], tier_cfg)
-        if idx is None:
+        if rid in unavailable:
+            excluded.append((rid, unavailable[rid]))
+        elif idx is None:
             excluded.append((rid, f"未分級（{ti['note'] or 'AA 沒有這個模型與強度的分數'}）"))
         elif not hi <= idx <= lo:
             excluded.append((rid, f"{ti['tier']} 不在範圍內"))
