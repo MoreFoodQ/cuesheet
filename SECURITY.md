@@ -18,7 +18,11 @@ To list models (`cue models`, and in the background of each `cue` run), CueSheet
 | `codex app-server` | Sends `initialize` and `model/list`. |
 | `agy models` | Lists available models. |
 
-Each process is stopped once it has answered. The CLIs contact their own services with their own sign-in. CueSheet makes no network requests of its own.
+To check CLI versions, CueSheet runs `claude --version`, `codex --version`, and `agy --version`, and reads agy's own update log in `~/.gemini/antigravity-cli/updater/update_status.json`. It never runs an update command.
+
+Each process is stopped once it has answered. The CLIs contact their own services with their own sign-in.
+
+CueSheet's own network requests are limited to reading public version numbers from the npm registry (`registry.npmjs.org/-/package/@openai/codex/dist-tags` and `@anthropic-ai/claude-code`). No account data is sent.
 
 ## What CueSheet reads
 
@@ -32,6 +36,7 @@ CueSheet does not read credential files, OAuth tokens, API keys, keychains, or b
 
 - `data/latest.json` in the repository. It contains quota percentages, reset times, plan names, and the number of Codex reset credits. Git ignores it.
 - `data/models_seen.json` in the repository: model ids and the date each was first seen. Git ignores it.
+- `data/relay/usage_samples.jsonl`: quota percentages before and after each relay attempt. Git ignores it. To flag samples taken while you were using the same CLI, CueSheet counts how many session files under `~/.claude/projects`, `~/.codex/sessions`, and `~/.gemini/antigravity-cli/conversations` were modified during the run. It reads only file modification times, never file contents.
 - `runners.json`, only when you run `cue models --update`.
 - `~/.claude/skills/cuesheet/SKILL.md`, only when you run `install-skill.ps1`.
 

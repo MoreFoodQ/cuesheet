@@ -133,6 +133,8 @@ Agents with at least `min_remaining_percent` left go first, in order. Agents tha
 
 Exit codes: `0` success, `1` the task failed for a reason other than quota, `2` no agent had quota, `3` configuration error or the same task is already running. Every run is recorded in `data/relay/history.jsonl`, and each agent's full output is saved in `data/relay/logs/`.
 
+Before and after each attempt, `cue relay` reads the agent's quota and records the difference in `data/relay/usage_samples.jsonl`, to build up how much quota each model uses per task. Each sample has a status, and only `clean` samples will count toward cost: `stale_snapshot` (either reading was not live), `incomplete` (the task did not finish), `window_reset` (the quota window reset during the run), `capped` (usage reached 99% or more), and `concurrent` (another session of the same CLI wrote logs during the run, so you may have been using it at the same time). For now the samples are only recorded; they do not change how the relay picks agents.
+
 The models the relay uses are listed in `runners.json` in the repository. The default order uses three models of the same tier, all at medium reasoning effort:
 
 | Order | Agent | Platform | Model | What it can do unattended |
@@ -197,6 +199,7 @@ Each `cue` run also fetches the model lists in the background, at no quota cost 
 - Quota windows that no agent follows, usually a new model's own quota (such as Claude's weekly Fable quota).
 - New models. CueSheet records the models it has seen in `data/models_seen.json` and flags a model for 7 days after it first appears. The first run only records the baseline.
 - Relay models that are missing, can be upgraded, or do not support the configured effort.
+- New versions of the three CLIs. New models often need a newer CLI; for example, Codex CLI 0.164.0 did not list GPT-6.2 Sol and 0.170.0 does. The check only compares version numbers and never installs anything: Codex and Claude Code are compared against the npm registry (Claude Code on your update channel, stable or latest), and agy checks for updates itself at startup, so CueSheet reads its last result. `cue models` also lists the three versions at the top.
 
 Add `--no-models` to skip the model lists. They are also skipped with `--agent` or `--only`.
 

@@ -2,6 +2,14 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-11-18
+
+### Added
+
+- CLI version check: compares the installed Claude Code and Codex CLI with the npm registry (Claude Code on its configured update channel) and reads agy's own update log. Outdated CLIs are listed under "需要注意" and at the top of `cue models`. Nothing is installed.
+- `cue relay` reads the agent's quota before and after each attempt and appends a sample to `data/relay/usage_samples.jsonl`, tagged `clean`, `stale_snapshot`, `incomplete`, `window_reset`, `capped`, or `concurrent`. Samples are only recorded for now.
+- `docs/ROADMAP.md`: plan for leaderboard aggregation, tiers, task-difficulty routing, and notifications.
+
 ## [0.4.1] - 2026-11-18
 
 ### Fixed
@@ -61,6 +69,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 - Claude Code skill and `install-skill.ps1`.
 - Unit tests on recorded CLI responses and a GitHub Actions workflow for Windows and Linux.
 
+[0.5.0]: https://github.com/MoreFoodQ/cuesheet/releases/tag/v0.5.0
 [0.4.1]: https://github.com/MoreFoodQ/cuesheet/releases/tag/v0.4.1
 [0.4.0]: https://github.com/MoreFoodQ/cuesheet/releases/tag/v0.4.0
 [0.3.0]: https://github.com/MoreFoodQ/cuesheet/releases/tag/v0.3.0

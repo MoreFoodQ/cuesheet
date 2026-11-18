@@ -133,6 +133,8 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 
 結束碼：`0` 成功、`1` 任務本身失敗（不是額度問題）、`2` 沒有代理有額度、`3` 設定錯誤或同一任務正在執行。每次執行記在 `data/relay/history.jsonl`，各代理的完整輸出存在 `data/relay/logs/`。
 
+每一棒執行前後，`cue relay` 會各查一次該代理的額度，把差值記在 `data/relay/usage_samples.jsonl`，用來累積「每個模型做一件事吃掉幾 % 額度」。每筆樣本有一個標記，只有 `clean` 之後會算進成本：`stale_snapshot`（前後任一次不是即時資料）、`incomplete`（任務沒完成）、`window_reset`（執行期間額度重置）、`capped`（用量到 99% 以上）、`concurrent`（執行期間同一家 CLI 有其他 session 在寫紀錄，代表你可能同時在用）。目前只記錄，不影響接力怎麼選人。
+
 接力用哪些模型，寫在 repo 裡的 `runners.json`。預設順序是三家同等級的模型，推理強度都是 medium：
 
 | 順序 | 代理 | 平台 | 模型 | 無人模式下能做什麼 |
@@ -197,6 +199,7 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 - 有額度沒有代理在看，通常是新模型的獨立額度（例如 Claude 的 Fable 週額度）。
 - 有新模型出現。CueSheet 把看過的模型記在 `data/models_seen.json`，第一次看到的模型會提醒 7 天。第一次執行只建立紀錄，不會提醒。
 - 接力用的模型不存在、可以升級，或推理強度不支援。
+- 三家 CLI 有新版本。新模型常要新版 CLI 才拿得到，例如 Codex CLI 0.164.0 的模型清單裡沒有 GPT-6.2 Sol，0.170.0 才有。版本檢查只比對版本號，不會自動安裝：Codex 和 Claude Code 查 npm registry（Claude Code 依你設定的更新管道，stable 或 latest），agy 會在啟動時自己檢查更新，CueSheet 讀它留下的結果。`cue models` 最上面也會列出三家的版本。
 
 不想抓模型清單時加 `--no-models`。只查單一代理（`--agent`）或部分平台（`--only`）時也不會抓。
 
