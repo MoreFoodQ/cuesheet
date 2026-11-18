@@ -5,3 +5,4 @@ __pycache__/
 *.tmp
 relay.json
 model_map.local.json
+tiers.local.json

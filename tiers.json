@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "about": "等級以 Artificial Analysis Intelligence Index 為準，單位是「模型＋推理強度」。界線是提案，可以改；AA 指數改版（index_version）時要重新校正。",
+  "board": "aa_intelligence",
+  "index_version": 5,
+  "tiers": [
+    {"id": "L1", "min": 55, "label": "前沿旗艦"},
+    {"id": "L2", "min": 50, "label": "高階主力"},
+    {"id": "L3", "min": 45, "label": "日常主力"},
+    {"id": "L4", "min": 35, "label": "輕量省額度"},
+    {"id": "L5", "min": 0, "label": "快速簡單雜務"}
+  ],
+  "overrides": {}
+}

@@ -31,6 +31,7 @@ EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
 EFFORT_WORDS = {"extra high": "xhigh", "x-high": "xhigh", "xhigh": "xhigh", "non-reasoning": "none",
                 "no reasoning": "none", "default fallback": None}
 
+AA_FREE = "https://artificialanalysis.ai/api/v2/language/models/free?page={page}"
 ARENA_ROWS = ("https://datasets-server.huggingface.co/rows?dataset=lmarena-ai/leaderboard-dataset"
               "&config=agent&split=latest&offset={offset}&length=100")
 EPOCH_ZIP = "https://epoch.ai/data/benchmark_data.zip"
@@ -48,6 +49,9 @@ EPOCH_BENCHMARKS = {
 }
 
 BOARDS = {
+    "aa_intelligence": {"title": "Artificial Analysis Intelligence Index", "what": "綜合智能（知識工作、程式、科學推理、一般知識）",
+                        "unit": "AA 指數", "cost": "跑這個指數的每題平均成本（USD）", "by_effort": True,
+                        "attribution": "Artificial Analysis（artificialanalysis.ai）"},
     "arena_agent": {"title": "Arena Agent", "what": "真實使用者的 Agent 任務，相對改善率",
                     "unit": "%", "cost": "每題成本中位數（USD）", "by_effort": True,
                     "attribution": "LMArena leaderboard-dataset（CC BY 4.0）"},
@@ -62,7 +66,12 @@ BOARDS = {
                                 "unit": "%", "cost": "每題成本（USD）", "by_effort": False,
                                 "attribution": "OpenRouter（CC BY 4.0）"},
 }
-SOURCES = ["arena", "epoch", "openrouter", "models_dev"]
+SOURCES = ["aa", "arena", "epoch", "openrouter", "models_dev"]
+AA_KEY_ENV = "CUESHEET_AA_KEY"
+
+
+class NoKey(Exception):
+    """沒有設定 Artificial Analysis 金鑰；不算失敗，只是這個來源停用。"""
 
 
 # ---------- 名稱正規化 ----------
@@ -117,6 +126,66 @@ def _num(v) -> float | None:
 
 
 # ---------- 各來源解析 ----------
+
+def aa_key(cfg: dict | None = None) -> str | None:
+    """金鑰只從環境變數或 config.json（不進 Git）讀，程式裡不寫、輸出裡不印。"""
+    import os
+    return os.environ.get(AA_KEY_ENV) or (cfg or {}).get("aa_api_key") or None
+
+
+def parse_aa(models: list[dict]) -> list[dict]:
+    out = []
+    for m in models:
+        name = m.get("name") or ""
+        key, effort = split_name(name)
+        if m.get("slug"):
+            # AA 把強度接在 slug 後面（claude-opus-5-5-medium）；沒接的那筆是該模型的預設或最高強度
+            key = norm_key(m["slug"])
+            for suffix in ([effort] if effort else []) + ["non-reasoning"]:
+                if key.endswith("-" + suffix):
+                    key = key[: -len(suffix) - 1]
+                    break
+        ev = m.get("evaluations") or {}
+        score = _num(ev.get("artificial_analysis_intelligence_index"))
+        cost = _num(((m.get("artificial_analysis_intelligence_index_cost") or {}).get("cost_per_task") or {})
+                    .get("total_cost"))
+        out.append({"board": "aa_intelligence", "raw": name, "key": key, "effort": effort,
+                    "score": score, "ci": None, "cost": cost, "slug": m.get("slug"),
+                    "release_date": m.get("release_date")})
+    return out
+
+
+def http_get_aa(url: str, key: str, timeout: float = 60) -> tuple[dict, dict]:
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "x-api-key": key})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8")), dict(resp.headers)
+
+
+def fetch_aa(key: str | None, get=http_get_aa, previous: dict | None = None) -> dict:
+    """只用官方 API（網站條款禁止程式擷取網頁）。已淘汰、這次沒出現的模型保留最後一次的分數並標 dropped。"""
+    if not key:
+        raise NoKey("沒有設定 Artificial Analysis 金鑰（config.json 的 aa_api_key 或環境變數 CUESHEET_AA_KEY）")
+    models, page, version, headers = [], 1, None, {}
+    while True:
+        body, headers = get(AA_FREE.format(page=page), key)
+        models += body.get("data") or []
+        version = body.get("intelligence_index_version", version)
+        if not (body.get("pagination") or {}).get("has_more"):
+            break
+        page += 1
+        if page > 20:
+            break
+    rows = parse_aa(models)
+    seen = {r["raw"] for r in rows}
+    today = now_iso()[:10]
+    for r in rows:
+        r["last_seen"] = today
+    for old in (previous or {}).get("rows") or []:
+        if old.get("raw") not in seen:
+            rows.append({**old, "dropped": True})
+    return {"board_date": today, "index_version": version, "rows": rows,
+            "rate_limit_remaining": next((v for k, v in headers.items() if k.lower() == "x-ratelimit-remaining"), None)}
+
 
 def parse_arena(rows: list[dict]) -> list[dict]:
     out = []
@@ -227,7 +296,8 @@ def fetch_models_dev(get=http_get) -> dict:
 FETCHERS = {"arena": fetch_arena, "epoch": fetch_epoch, "openrouter": fetch_openrouter,
             "models_dev": fetch_models_dev}
 SOURCE_INFO = {
-    "arena": "LMArena leaderboard-dataset（Hugging Face，CC BY 4.0）",
+    "aa": "Artificial Analysis 官方 API（使用者自己的免費金鑰；要標出處，不可轉發原始資料）",
+    "arena":"LMArena leaderboard-dataset（Hugging Face，CC BY 4.0）",
     "epoch": "Epoch AI benchmark_data.zip（CC BY 4.0）",
     "openrouter": "OpenRouter 每日匯出 benchmark-leaderboard（CC BY 4.0）",
     "models_dev": "models.dev api.json（MIT）",
@@ -252,12 +322,14 @@ def is_fresh(cache: dict | None, max_age: timedelta = MAX_AGE) -> bool:
     return bool(cache and cache.get("status") == "ok" and fetched and now_utc() - fetched < max_age)
 
 
-def refresh(data_dir: Path, sources=None, force: bool = False, fetchers=None) -> dict:
+def refresh(data_dir: Path, sources=None, force: bool = False, fetchers=None, cfg: dict | None = None) -> dict:
     """更新過期（或 force）的來源；失敗的來源保留舊資料並標 stale。回傳 {來源: 快取}。"""
-    fetchers = fetchers or FETCHERS
+    fetchers = dict(fetchers or FETCHERS)
     out = {}
     for source in sources or SOURCES:
         cache = load_cache(data_dir, source)
+        if source == "aa" and "aa" not in fetchers:
+            fetchers["aa"] = lambda prev=cache: fetch_aa(aa_key(cfg), previous=prev)
         if not force and is_fresh(cache):
             out[source] = cache
             continue
@@ -265,6 +337,9 @@ def refresh(data_dir: Path, sources=None, force: bool = False, fetchers=None) ->
             payload = fetchers[source]()
             cache = {"source": source, "status": "ok", "fetched_at": now_iso(), "error": None,
                      "attribution": SOURCE_INFO[source], **payload}
+        except NoKey as exc:
+            cache = {"source": source, "status": "disabled", "fetched_at": None, "error": str(exc),
+                     "attribution": SOURCE_INFO[source], "rows": []}
         except Exception as exc:  # noqa: BLE001 — 單一來源失敗不影響其他來源
             if cache:
                 cache = {**cache, "status": "stale", "error": str(exc)}

@@ -2,6 +2,18 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-11-18
+
+### Added
+
+- Artificial Analysis Intelligence Index as a leaderboard, read only through the official free API with your own key (`aa_api_key` in `config.json` or `CUESHEET_AA_KEY`). Each refresh uses 4 of the 100 daily requests. Without a key the source is shown as disabled. Models that leave the list keep their last score and are marked as dropped.
+- `cue tiers`: groups each model and effort into L1–L5 by AA index, listing only models in your subscriptions (`--all` for every model). Bands are in `tiers.json`; `tiers.local.json` can override them or assign a tier by hand.
+- `cue rank` shows each model's tier on the AA table and the baseline's tier in the header. New `--limit` option.
+
+### Changed
+
+- When a leaderboard has more matches than the limit, `cue rank` keeps models cheaper than the baseline first, then the closest in score, and says how many were left out. Before, it kept the highest scores, which could hide a close, much cheaper model.
+
 ## [0.6.0] - 2026-11-18
 
 ### Added

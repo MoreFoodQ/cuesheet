@@ -29,7 +29,9 @@ python "{{CUESHEET_HOME}}\cue.py" --max-age 600 --json
 
 要比較模型能力和成本時，用 `python "{{CUESHEET_HOME}}\cue.py" rank <模型> --effort <強度>`：每個榜一張表，列出同等級或更強、更省、使用者能不能用。不同榜的分數不能相加，回報時要說是哪個榜。
 
-替補只找同等級的模型：Claude Opus 5.5 medium、Sol（Codex，模型以 runners.json 為準）medium、Argon medium。三者互為替補。
+要知道「某個分數上下有哪些模型能用」，用 `python "{{CUESHEET_HOME}}\cue.py" tiers`：依 Artificial Analysis 指數分成 L1（55 以上）、L2（50）、L3（45）、L4（35）、L5，只列使用者訂閱裡有的模型。難的任務找等級不低於目前模型的；簡單的任務從低等級往上找，省下高階模型的額度。回報時要說分數來自 Artificial Analysis。
+
+替補只找同等級的模型：Claude Opus 5.5 medium、Sol（Codex，模型以 runners.json 為準）medium、Argon medium。三者互為替補（依 AA，Sol 6.2 medium 比另外兩個高一級，當替補只會更強）。
 
 規則：
 - Flash 不當任何代理的替補。它只接本來就適合它的簡單工作；別人額度不夠時，不要降級改派 Flash。

@@ -213,7 +213,7 @@ Add `--no-models` to skip the model lists. They are also skipped with `--agent` 
 
 ### Not done yet
 
-`cue models` only finds newer versions within a family. Deciding which models in different families are of the same tier (for example, whether Hydrogen can replace Argon) is still up to you. A more reliable approach is to match models by score ranges on public leaderboards or benchmarks, which is the planned next step.
+`cue models` only finds newer versions within a family. `cue tiers` (next section) shows which models across families are in the same tier, but the relay order does not follow tiers automatically yet; edit `runners.json` yourself.
 
 Things to keep in mind when writing tasks:
 
@@ -231,6 +231,8 @@ Things to keep in mind when writing tasks:
 .\cue.ps1 rank gemini-4-argon-medium    # agy model ids include the effort
 .\cue.ps1 rank hydrogen --all           # also list models outside your subscriptions
 .\cue.ps1 rank opus --margin 5          # count models up to 5 points below as close (default 3)
+.\cue.ps1 rank opus --limit 40          # show up to 40 models per leaderboard (default 15)
+.\cue.ps1 tiers                         # group your models into L1–L5 by AA index
 .\cue.ps1 boards --refresh              # fetch leaderboard data again
 ```
 
@@ -241,14 +243,17 @@ Each leaderboard gets its own table; scores from different leaderboards are neve
 - Whether you can use it: `已設定 <agent>，<quota>` (configured), `平台有（<platform>），未設定` (on the platform, not configured), `平台有，但沒有這個強度` (effort not offered), or `無訂閱` (not in your subscriptions).
 - Source and data date.
 
+When a leaderboard has more than 15 matches, models cheaper than the baseline are kept first, then those closest in score. The table ends with how many were left out.
+
 When a leaderboard lacks the requested effort (Arena has no Opus 5.5 medium, for example), the nearest effort is used and the header says so. Leaderboards that do not split by effort are marked too.
 
 Two summaries follow: models that are as good or better and cheaper on some leaderboards (by the leaderboard's cost per task, not subscription quota), and API list prices.
 
-Current sources (no account or key needed):
+Current sources (no account or key needed, except AA):
 
 | Leaderboard | Measures | Per effort | Cost | Source |
 |---|---|---|---|---|
+| Artificial Analysis Intelligence Index | General intelligence (knowledge work, coding, scientific reasoning, general knowledge) | Yes | Average cost per task | Artificial Analysis official API (your own free key) |
 | Arena Agent | Relative improvement on real user agent tasks | Yes | Median cost per task | LMArena (CC BY 4.0) |
 | Epoch Capabilities Index | Combined capability across benchmarks | No | None | Epoch AI (CC BY 4.0) |
 | CursorBench (via Epoch) | Real coding work in Cursor | Yes | Cost per task | Epoch AI (CC BY 4.0) |
@@ -259,7 +264,39 @@ Current sources (no account or key needed):
 
 Leaderboard data is refreshed once a day and stored in `data/boards/`, which Git ignores. If a source fails, its last data is kept and marked as old; the other sources still update. `cue boards` shows each source's status.
 
-New models usually take a few days to appear on these leaderboards (on 2026-11-18, GPT-6.2 Sol was not listed yet). Artificial Analysis covers new models fastest and will be added with the user's own free API key (see `docs/ROADMAP.md`).
+New models usually take a few days to appear on the no-key leaderboards (on 2026-11-18, GPT-6.2 Sol was not listed yet). Artificial Analysis is the fastest: it had GPT-6.2 Sol at every effort on the same day.
+
+### Connecting Artificial Analysis (optional)
+
+The AA website terms forbid automated scraping, so CueSheet uses only the official API, with your own key.
+
+1. Sign up at [artificialanalysis.ai](https://artificialanalysis.ai/) and request a free API key.
+2. Put it in `config.json` in the repository (ignored by Git): `{"aa_api_key": "your key"}`. Or set the environment variable `CUESHEET_AA_KEY`; it wins when both are set.
+3. Run `.\cue.ps1 boards --refresh`.
+
+The free key allows 100 requests a day. Each refresh uses 4 (the list has 4 pages). Data refreshes automatically once a day; `--refresh` fetches again. Without a key, AA is shown as disabled and the other leaderboards still work. AA data stays on your machine. The terms require attribution and forbid redistributing the raw data, so CueSheet shows scores but offers no export.
+
+When a model disappears from AA (for example, after it is deprecated), its last score is kept and marked `已下榜` (dropped).
+
+### Tiers (cue tiers)
+
+`cue tiers` groups each model and effort into five tiers by AA index, listing only models in your subscriptions. It answers questions like "which models around 50 can I use?":
+
+| Tier | AA index | For |
+|---|---|---|
+| L1 frontier | 55 and up | Research and the hardest problems |
+| L2 high-end | 50 and up | Hard work |
+| L3 everyday | 45 and up | Most work |
+| L4 light | 35 and up | Well-defined work |
+| L5 quick chores | below 35 | Many simple chores |
+
+The bands live in `tiers.json`. They are fixed ranges rather than "within N points of another model", so A and B, and B and C, can't end up in the same tier while A and C are far apart. Models without an AA score are shown as unranked and are never estimated from other leaderboards. To change the bands or assign a tier by hand, use `tiers.local.json` (ignored by Git):
+
+```json
+{"overrides": {"gemini-3-8-flash:low": "L5", "some-model": "L4"}}
+```
+
+The AA table in `cue rank` also shows each model's tier, and the header gives the baseline's tier. When AA changes its index version (`index_version`), the bands need recalibrating.
 
 Model names are aligned with fixed rules: lowercase, `.` and spaces become `-`, and the effort in parentheses or after an underscore is split off, so `Claude Opus 5.5 (Max)`, `claude-opus-5-5_medium`, and `anthropic/claude-opus-5.5` all become `claude-opus-5-5`. Exceptions go in `model_map.json`; your own overrides and names to hide go in `model_map.local.json` (ignored by Git), in the same format:
 

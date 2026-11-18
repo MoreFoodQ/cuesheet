@@ -34,7 +34,8 @@ SEEN_PATH = ROOT / "data" / "models_seen.json"
 
 def load_json(path: Path, default):
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        # utf-8-sig：記事本存檔可能帶 BOM
+        return json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         return default
 
@@ -124,8 +125,8 @@ def run_boards(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="cue boards", description="更新與查看免金鑰的榜單資料（快取在 data/boards/）")
     ap.add_argument("--refresh", action="store_true", help="不管快取多新都重抓")
     args = ap.parse_args(argv)
-    caches = boards.refresh(ROOT / "data", force=args.refresh)
-    status_text = {"ok": "正常", "stale": "舊資料", "unavailable": "無法取得"}
+    caches = boards.refresh(ROOT / "data", force=args.refresh, cfg=load_json(ROOT / "config.json", {}))
+    status_text = {"ok": "正常", "stale": "舊資料", "unavailable": "無法取得", "disabled": "未啟用"}
     for source, c in caches.items():
         count = len(c.get("rows") or c.get("prices") or [])
         date = c.get("board_date") or "—"
@@ -138,17 +139,9 @@ def run_boards(argv: list[str]) -> int:
     return 0 if all(c["status"] != "unavailable" for c in caches.values()) else 1
 
 
-def run_rank(argv: list[str]) -> int:
+def board_context(refresh: bool) -> dict:
+    """cue rank 與 cue tiers 共用：榜單資料、三家模型清單、目前額度、可用性。"""
     from cuesheet import boards, rank
-
-    ap = argparse.ArgumentParser(prog="cue rank", description="一個模型在各榜的位置，以及同等級或更強、更省的模型")
-    ap.add_argument("model", help="模型，例如 opus、claude-opus-5-5、gpt-6.2-sol、gemini-4-argon-medium、hydrogen")
-    ap.add_argument("--effort", help="推理強度（minimal/low/medium/high/xhigh/max）；不寫就用接力設定或 medium")
-    ap.add_argument("--margin", type=float, default=3.0, help="比基準低多少以內算相近（預設 3）")
-    ap.add_argument("--all", action="store_true", help="也列出你訂閱裡沒有的模型")
-    ap.add_argument("--refresh", action="store_true", help="重抓榜單資料")
-    ap.add_argument("--json", action="store_true", help="輸出 JSON")
-    args = ap.parse_args(argv)
 
     cfg = load_json(ROOT / "config.json", {})
     agents_cfg = load_json(ROOT / "agents.json", {"agents": []})
@@ -163,12 +156,90 @@ def run_rank(argv: list[str]) -> int:
         return {a["id"]: a for a in evaluate_agents(providers, agents_cfg)}
 
     with ThreadPoolExecutor(max_workers=3) as pool:
-        fut_caches = pool.submit(boards.refresh, ROOT / "data", None, args.refresh)
+        fut_caches = pool.submit(boards.refresh, ROOT / "data", None, refresh, None, cfg)
         fut_catalog = pool.submit(models.collect_models, cfg, 90)
         fut_agents = pool.submit(current_agents)
         caches, catalog, agents = fut_caches.result(), fut_catalog.result(), fut_agents.result()
-
     rows = rank.apply_map(boards.all_rows(caches), rank.load_model_map(ROOT))
+    return {"cfg": cfg, "runners": runners_cfg, "caches": caches, "catalog": catalog, "agents": agents,
+            "rows": rows, "avail": rank.build_availability(catalog, runners_cfg, agents)}
+
+
+def aa_status_line(caches: dict) -> str | None:
+    aa = caches.get("aa") or {}
+    if aa.get("status") == "disabled":
+        return "※ 沒有 Artificial Analysis 資料：在 config.json 設定 aa_api_key（免費金鑰）後才有等級與 AA 分數。"
+    if aa.get("status") in ("stale", "unavailable"):
+        return f"※ Artificial Analysis 這次沒更新成功：{aa.get('error')}"
+    return None
+
+
+def run_tiers(argv: list[str]) -> int:
+    from cuesheet import tiers
+
+    ap = argparse.ArgumentParser(prog="cue tiers", description="依 AA 指數把你能用的模型分成 L1～L5")
+    ap.add_argument("--all", action="store_true", help="也列出你訂閱裡沒有的模型")
+    ap.add_argument("--refresh", action="store_true", help="重抓榜單資料")
+    ap.add_argument("--json", action="store_true", help="輸出 JSON")
+    args = ap.parse_args(argv)
+
+    ctx = board_context(args.refresh)
+    tier_cfg = tiers.load(ROOT)
+    groups = tiers.group(ctx["rows"], tier_cfg, ctx["avail"], show_all=args.all)
+    if args.json:
+        print(json.dumps({"tiers": tier_cfg["tiers"], "groups": groups}, ensure_ascii=True, indent=2))
+        return 0
+    from cuesheet import rank
+    note = aa_status_line(ctx["caches"])
+    if note:
+        print(note)
+        if ctx["caches"]["aa"].get("status") == "disabled":
+            return 3
+    print(f"CueSheet tiers　依 Artificial Analysis Intelligence Index（v{tier_cfg.get('index_version')}）分級"
+          + ("" if args.all else "，只列你訂閱裡有的模型（--all 列全部）"))
+    print()
+    for t in tier_cfg["tiers"] + [{"id": tiers.UNRANKED, "min": None, "label": ""}]:
+        rows = groups.get(t["id"]) or []
+        if not rows:
+            continue
+        if t["id"] == tiers.UNRANKED:
+            names = sorted({(ctx["avail"].get(r["key"]) or {}).get("name") or r["key"] for r in rows})
+            print(f"■ 未分級（AA 沒有分數，共 {len(rows)} 個模型＋強度；要分級請在 tiers.local.json 的 overrides 指定）")
+            print("  " + "、".join(names))
+            print()
+            continue
+        head = f"■ {tiers.label(t['id'], tier_cfg)}" + (f"（AA {t['min']} 以上）" if t.get("min") is not None else "")
+        print(head)
+        table = [("模型（強度）", "AA 指數", "每題成本", "你能不能用")]
+        for r in rows:
+            name = ((ctx["avail"].get(r["key"]) or {}).get("name") or r["key"]) + (f" ({r['effort']})" if r["effort"] else "")
+            table.append((name, f"{r['score']:.1f}" if r["score"] is not None else "—",
+                          f"${r['cost']:.2f}" if r["cost"] is not None else "—",
+                          rank.availability_text(r["key"], r["effort"], ctx["avail"])))
+        widths = [max(_width(row[i]) for row in table) for i in range(3)]
+        for row in table:
+            print("  " + "  ".join(_pad(row[i], widths[i]) for i in range(3)) + "  " + row[3])
+        print()
+    print("資料來源：Artificial Analysis（artificialanalysis.ai）。等級界線在 tiers.json，可以調整。")
+    return 0
+
+
+def run_rank(argv: list[str]) -> int:
+    from cuesheet import boards, rank, tiers
+
+    ap = argparse.ArgumentParser(prog="cue rank", description="一個模型在各榜的位置，以及同等級或更強、更省的模型")
+    ap.add_argument("model", help="模型，例如 opus、claude-opus-5-5、gpt-6.2-sol、gemini-4-argon-medium、hydrogen")
+    ap.add_argument("--effort", help="推理強度（minimal/low/medium/high/xhigh/max）；不寫就用接力設定或 medium")
+    ap.add_argument("--margin", type=float, default=3.0, help="比基準低多少以內算相近（預設 3）")
+    ap.add_argument("--limit", type=int, default=15, help="每個榜最多列幾個，超過時留離基準最近的（預設 15）")
+    ap.add_argument("--all", action="store_true", help="也列出你訂閱裡沒有的模型")
+    ap.add_argument("--refresh", action="store_true", help="重抓榜單資料")
+    ap.add_argument("--json", action="store_true", help="輸出 JSON")
+    args = ap.parse_args(argv)
+
+    ctx = board_context(args.refresh)
+    caches, catalog, rows, runners_cfg = ctx["caches"], ctx["catalog"], ctx["rows"], ctx["runners"]
+    tier_cfg = tiers.load(ROOT)
     key, embedded_effort, candidates = rank.resolve_model(args.model, catalog, rows)
     if key is None:
         print(f"找不到「{args.model}」。" + (f"你是指：{'、'.join(candidates[:10])}？" if candidates else ""))
@@ -176,8 +247,8 @@ def run_rank(argv: list[str]) -> int:
     runner_effort = next((r.get("effort") for r in runners_cfg.values()
                           if r.get("model") and rank.split_cli_id(r.get("platform", ""), r["model"])[0] == key), None)
     effort = args.effort or embedded_effort or runner_effort or "medium"
-    avail = rank.build_availability(catalog, runners_cfg, agents)
-    results = [rank.rank_board(b, rows, key, effort, avail, margin=args.margin, show_all=args.all)
+    avail = ctx["avail"]
+    results = [rank.rank_board(b, rows, key, effort, avail, margin=args.margin, show_all=args.all, limit=args.limit, tier_cfg=tier_cfg)
                for b in boards.BOARDS]
     summary = rank.summarize(results)
     if args.json:
@@ -186,7 +257,13 @@ def run_rank(argv: list[str]) -> int:
         return 0
     name = (avail.get(key) or {}).get("name") or key
     label = f"{name}（{effort}）" + ("" if args.effort or embedded_effort else "　※沒有指定強度，用 " + effort)
-    print(rank.render(label, results, summary, boards.prices(caches), caches, args.margin), end="")
+    aa_res = next((r for r in results if r["board"] == tier_cfg.get("board")), None)
+    if aa_res and aa_res["baseline"] and not aa_res["note"]:
+        base = aa_res["baseline"]
+        tier_line = f"基準等級：{tiers.label(base['tier'], tier_cfg)}（AA {base['score']:.1f}）"
+    else:
+        tier_line = aa_status_line(caches) or "基準等級：未分級（AA 沒有這個模型與強度的分數）"
+    print(rank.render(label, results, summary, boards.prices(caches), caches, args.margin, tier_line), end="")
     return 0
 
 
@@ -233,6 +310,8 @@ def main() -> int:
         return run_rank(sys.argv[2:])
     if sys.argv[1:2] == ["boards"]:
         return run_boards(sys.argv[2:])
+    if sys.argv[1:2] == ["tiers"]:
+        return run_tiers(sys.argv[2:])
     ap = argparse.ArgumentParser(prog="cue", description="CueSheet：查看 Claude Code、Codex、agy 的剩餘額度")
     ap.add_argument("--version", action="version", version=f"CueSheet {__version__}")
     ap.add_argument("--json", action="store_true", help="輸出 JSON")

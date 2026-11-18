@@ -213,7 +213,7 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 
 ### 還沒做到的部分
 
-`cue models` 目前只會找「同系列」的新版本。不同系列之間誰跟誰同等級（例如 Hydrogen 是不是可以取代 Argon），還要你自己判斷。比較可靠的做法是參考公開的模型排行榜或基準測試分數，用分數區間自動配對同等級的模型，這是之後要做的方向。
+`cue models` 只會找「同系列」的新版本。不同系列之間誰跟誰同等級，可以用 `cue tiers` 看（見下一節），但接力順序還不會自動依等級調整，要你自己改 `runners.json`。
 
 寫任務時要注意：
 
@@ -231,6 +231,8 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 .\cue.ps1 rank gemini-4-argon-medium    # agy 的模型 id 本身帶強度
 .\cue.ps1 rank hydrogen --all           # 也列出你訂閱裡沒有的模型
 .\cue.ps1 rank opus --margin 5          # 比基準低 5 分以內都算相近（預設 3）
+.\cue.ps1 rank opus --limit 40          # 每個榜最多列 40 個（預設 15）
+.\cue.ps1 tiers                         # 依 AA 指數把你能用的模型分成 L1～L5
 .\cue.ps1 boards --refresh              # 重抓榜單資料
 ```
 
@@ -241,14 +243,17 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 - 你能不能用：`已設定 <代理>，<額度狀態>`、`平台有（<平台>），未設定`、`平台有，但沒有這個強度`、`無訂閱`。
 - 出處與資料日期。
 
+一個榜超過 15 個時，先留比基準便宜的，再留分數離基準近的，表尾會寫還有幾個沒列。
+
 榜上沒有指定的推理強度時（例如 Arena 沒有 Opus 5.5 medium），改用最接近的強度對照，表頭會寫「⚠ 沒有 medium，改用 high 對照」。榜單本身不分強度時也會標明。
 
 最後有兩個彙總：在哪些榜上「同等或更強、而且更省」的模型（依榜單的每題成本，不是訂閱額度），以及 API 牌價。
 
-目前的資料來源（都不需要帳號或金鑰）：
+目前的資料來源（除了 AA，都不需要帳號或金鑰）：
 
 | 榜單 | 測什麼 | 分強度 | 成本 | 出處 |
 |---|---|---|---|---|
+| Artificial Analysis Intelligence Index | 綜合智能（知識工作、程式、科學推理、一般知識） | 有 | 每題平均成本 | Artificial Analysis 官方 API（要自己的免費金鑰） |
 | Arena Agent | 真實使用者 Agent 任務的相對改善率 | 有 | 每題成本中位數 | LMArena（CC BY 4.0） |
 | Epoch Capabilities Index | 跨多個基準的綜合能力 | 沒有 | 沒有 | Epoch AI（CC BY 4.0） |
 | CursorBench（Epoch 彙整） | 在 Cursor 裡完成真實程式工作 | 有 | 每題成本 | Epoch AI（CC BY 4.0） |
@@ -259,7 +264,39 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 
 榜單資料一天更新一次，存在 `data/boards/`，不進 Git。某個來源抓不到時，保留上一次的資料並標「舊資料」，其他來源照常更新。`cue boards` 列出每個來源的狀態。
 
-剛推出的模型通常要過幾天才會出現在這些榜上（2026-11-18：GPT-6.2 Sol 還沒有）。Artificial Analysis 涵蓋得最快，之後會用使用者自己的免費金鑰接上（見 `docs/ROADMAP.md`）。
+剛推出的模型通常要過幾天才會出現在免金鑰的榜上（2026-11-18：GPT-6.2 Sol 還沒有）。Artificial Analysis 收錄得最快，當天就有 GPT-6.2 Sol 每種強度的分數。
+
+### 接上 Artificial Analysis（選用）
+
+AA 的網站條款禁止用程式擷取網頁，所以 CueSheet 只走官方 API，而且要用你自己的金鑰。
+
+1. 到 [artificialanalysis.ai](https://artificialanalysis.ai/) 註冊，申請免費 API 金鑰。
+2. 把金鑰放進 repo 裡的 `config.json`（不進 Git）：`{"aa_api_key": "你的金鑰"}`。也可以改設環境變數 `CUESHEET_AA_KEY`，兩者都有時用環境變數。
+3. 執行 `.\cue.ps1 boards --refresh`。
+
+免費金鑰一天 100 次，每次更新用掉 4 次（榜單分 4 頁）。平常一天自動更新一次，手動加 `--refresh` 才會多抓。沒有金鑰時 AA 標為「未啟用」，其他榜照常運作。AA 的資料只存在本機，條款要求標出處、不可轉發原始資料，所以 CueSheet 只顯示分數，不提供匯出。
+
+某個模型從 AA 榜上消失時（例如被標成已淘汰），會保留最後一次的分數並標「已下榜」，不會直接不見。
+
+### 等級（cue tiers）
+
+`cue tiers` 依 AA 指數把「模型＋推理強度」分成五級，只列你訂閱裡有的模型。用來回答「50 分上下有哪些可以用」：
+
+| 等級 | AA 指數 | 適合 |
+|---|---|---|
+| L1 前沿旗艦 | 55 以上 | 研究突破、最難的題 |
+| L2 高階主力 | 50 以上 | 難的工作 |
+| L3 日常主力 | 45 以上 | 一般工作 |
+| L4 輕量省額度 | 35 以上 | 規則明確的工作 |
+| L5 快速簡單雜務 | 35 以下 | 大量簡單雜務 |
+
+界線寫在 `tiers.json`，用固定區間，不用「跟誰差幾分」，才不會出現 A、B 同級，B、C 同級，A、C 卻差很多的情況。AA 沒有分數的模型標「未分級」，不會用其他榜推算。想改界線或替某個模型指定等級，寫在 `tiers.local.json`（不進 Git）：
+
+```json
+{"overrides": {"gemini-3-8-flash:low": "L5", "some-model": "L4"}}
+```
+
+`cue rank` 的 AA 表也會在每個模型後面標等級，並在開頭寫出基準模型的等級。AA 改版指數（`index_version`）時，界線要重新校正。
 
 各榜的模型名稱用固定規則對齊：轉小寫、`.` 和空白換成 `-`、把括號或底線後面的推理強度拆出來，例如 `Claude Opus 5.5 (Max)`、`claude-opus-5-5_medium`、`anthropic/claude-opus-5.5` 都對到 `claude-opus-5-5`。規則對不上的例外寫在 `model_map.json`；自己的覆寫或要忽略的名稱寫在 `model_map.local.json`（不進 Git），格式相同：
 

@@ -26,13 +26,15 @@ To check CLI versions, CueSheet reads public version numbers from the npm regist
 
 `cue rank` and `cue boards` also download public leaderboard data, at most once a day: the Hugging Face datasets API for `lmarena-ai/leaderboard-dataset`, `epoch.ai/data/benchmark_data.zip`, OpenRouter's daily export (`openrouter.ai/api/v1/datasets/exports/`), and `models.dev/api.json`. These requests carry no account data. The files are stored in `data/boards/`, which Git ignores.
 
+If you add an Artificial Analysis key, CueSheet also calls `artificialanalysis.ai/api/v2/language/models/free` with the key in the `x-api-key` header, at most once a day unless you pass `--refresh`. It never requests AA web pages. The key is read from the `CUESHEET_AA_KEY` environment variable or `aa_api_key` in `config.json`; it is never written to `data/`, logs, or output.
+
 ## What CueSheet reads
 
 - The output of the commands above.
 - `~/.codex/sessions/**/*.jsonl`, only when the live Codex query fails. CueSheet reads the last `rate_limits` entry and ignores the rest of the file.
-- `agents.json` and, if present, `config.json` in the repository.
+- `agents.json`, `runners.json`, `model_map.json`, `tiers.json`, and, if present, `config.json`, `model_map.local.json`, and `tiers.local.json` in the repository.
 
-CueSheet does not read credential files, OAuth tokens, API keys, keychains, or browser data.
+CueSheet does not read credential files, OAuth tokens, keychains, or browser data. The only key it reads is the optional Artificial Analysis key you put in `config.json` or `CUESHEET_AA_KEY`.
 
 ## What CueSheet writes
 

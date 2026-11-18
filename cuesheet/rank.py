@@ -146,9 +146,13 @@ def pick_baseline(rows: list[dict], key: str, effort: str | None, by_effort: boo
 
 
 def rank_board(board: str, rows: list[dict], key: str, effort: str | None, avail: dict, *,
-               margin: float = 3.0, show_all: bool = False, limit: int = 15) -> dict:
+               margin: float = 3.0, show_all: bool = False, limit: int = 15, tier_cfg: dict | None = None) -> dict:
     spec = boards.BOARDS[board]
-    rows = [r for r in rows if r["board"] == board and r["score"] is not None]
+    rows = [r for r in rows if r["board"] == board and r["score"] is not None and not r.get("dropped")
+            or (r["board"] == board and r.get("dropped") and r["key"] == key)]
+    if tier_cfg and board == tier_cfg.get("board"):
+        from . import tiers
+        rows = [{**r, "tier": tiers.tier_of(r["score"], tier_cfg, r["key"], r["effort"])} for r in rows]
     base, note = pick_baseline(rows, key, effort, spec["by_effort"])
     result = {"board": board, "title": spec["title"], "what": spec["what"], "unit": spec["unit"],
               "cost_label": spec["cost"], "attribution": spec["attribution"], "note": note,
@@ -168,12 +172,12 @@ def rank_board(board: str, rows: list[dict], key: str, effort: str | None, avail
                        "available": availability_text(r["key"], r["effort"], avail),
                        "cheaper": (r["cost"] is not None and base["cost"] is not None and r["cost"] < base["cost"]
                                    and not is_base)})
-    picked.sort(key=lambda r: -r["score"])
     if len(picked) > limit:
-        keep = picked[:limit]
-        if not any(r["is_base"] for r in keep):
-            keep[-1] = next(r for r in picked if r["is_base"])
-        picked = keep
+        # 太多時先留「更省」的，再留離基準近的：使用者最想知道的是「差不多或更強、而且更省」
+        picked.sort(key=lambda r: (not r["is_base"], not r["cheaper"], abs(r["score"] - base["score"])))
+        result["hidden_above"] = len(picked) - limit
+        picked = picked[:limit]
+    picked.sort(key=lambda r: -r["score"])
     result["rows"] = picked
     return result
 
@@ -209,8 +213,11 @@ def fmt_cost(r: dict, base: dict) -> str:
 
 
 def render(query_label: str, results: list[dict], summary: list[dict], prices: dict, caches: dict,
-           margin: float) -> str:
-    lines = [f"CueSheet rank　基準：{query_label}", f"列出範圍：分數不低於基準 {margin:g} 以內，加上所有更高分的；預設只列你訂閱裡有的模型（--all 列全部）", ""]
+           margin: float, tier_line: str | None = None) -> str:
+    lines = [f"CueSheet rank　基準：{query_label}"]
+    if tier_line:
+        lines.append(tier_line)
+    lines += [f"列出範圍：分數不低於基準 {margin:g} 以內，加上所有更高分的；預設只列你訂閱裡有的模型（--all 列全部）", ""]
     keys_seen, names = [], {}
     for res in results:
         lines.append(f"■ {res['title']}　{res['what']}")
@@ -223,7 +230,9 @@ def render(query_label: str, results: list[dict], summary: list[dict], prices: d
         lines.append(f"  {unit_note}{cost_note}" + (f"　⚠ {res['note']}" if res["note"] else ""))
         table = [("", "模型（強度）", "分數", "成本（與基準比）", "你能不能用")]
         for r in res["rows"]:
-            name = r["name"] + (f" ({r['effort']})" if r["effort"] else "")
+            name = r["name"] + (f" ({r['effort']})" if r["effort"] else "") + (f" [{r['tier']}]" if r.get("tier") else "")
+            if r.get("dropped"):
+                name += "（已下榜）"
             if r["key"] not in keys_seen:
                 keys_seen.append(r["key"])
                 names[r["key"]] = r["name"]
@@ -231,6 +240,8 @@ def render(query_label: str, results: list[dict], summary: list[dict], prices: d
         widths = [max(_width(row[i]) for row in table) for i in range(4)]
         for row in table:
             lines.append("  " + "  ".join(_pad(row[i], widths[i]) for i in range(4)) + "  " + row[4])
+        if res.get("hidden_above"):
+            lines.append(f"  （另有 {res['hidden_above']} 個沒列出：較貴、或離基準較遠；要看全部用 --limit）")
         lines.append(f"  出處：{res['attribution']}")
         lines.append("")
 
@@ -251,5 +262,5 @@ def render(query_label: str, results: list[dict], summary: list[dict], prices: d
     lines.append("資料日期：" + "；".join(
         f"{s} {c.get('board_date') or (c.get('fetched_at') or '')[:10]}" + ("（舊資料）" if c.get("status") == "stale" else "")
         for s, c in caches.items() if c.get("status") in ("ok", "stale")))
-    lines.append("★ 基準　↑ 分數更高　≈ 分數相近（在範圍內但略低）")
+    lines.append("★ 基準　↑ 分數更高　≈ 分數相近（在範圍內但略低）　[L1～L5] 依 AA 指數分的等級")
     return "\n".join(lines).rstrip() + "\n"
