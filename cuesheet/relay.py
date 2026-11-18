@@ -16,6 +16,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from . import usage
 from .common import CREATE_NO_WINDOW, find_exe, now_iso, now_utc, parse_iso
 from .report import LEVEL_TEXT, fmt_pct, fmt_time
 
@@ -230,8 +231,14 @@ class Lock:
 
 
 def run_task(task: dict, agents: dict, runners: dict, cfg: dict, data_dir: Path, *,
-             dry_run: bool = False, echo=print, execute_fn=execute, recheck=None) -> dict:
-    """依額度選代理並執行。recheck(agent_id) 回傳最新的代理額度（用來判斷失敗是不是因為額度用完）。"""
+             dry_run: bool = False, echo=print, execute_fn=execute, recheck=None,
+             snapshot_fn=None, activity_fn=None) -> dict:
+    """依額度選代理並執行。
+
+    recheck(agent_id)：回傳最新的代理額度（用來判斷失敗是不是因為額度用完）。
+    snapshot_fn(quota_agent)：回傳該代理額度桶的快照；有給就在每次執行前後各記一次，存成額度消耗樣本。
+    activity_fn(platform, t0, t1)：回傳執行期間該 CLI 被寫過的 session 檔數，用來排除有其他工作同時在用的樣本。
+    """
     order, skipped = plan_order(task, agents, runners)
     run = {"task": task["name"], "started_at": now_iso(), "dry_run": dry_run,
            "skipped": skipped, "attempts": [], "outcome": None, "agent": None}
@@ -258,18 +265,38 @@ def run_task(task: dict, agents: dict, runners: dict, cfg: dict, data_dir: Path,
             continue
 
         echo(f"→ {aid} 上場（{state}）")
-        started = time.time()
+        quota_id = runners[aid].get("quota_agent", aid)
+        before = _safe_snapshot(snapshot_fn, quota_id)
+        started, started_iso = time.time(), now_iso()
         result = execute_fn(cmd, stdin_text, task["workdir"], task["timeout_minutes"] * 60)
+        finished = time.time()
         attempt = {"agent": aid, "exit_code": result["exit_code"], "seconds": result["seconds"],
                    "timed_out": result["timed_out"]}
+        pending_sample = None
+        if before is not None:
+            pending_sample = {"before": before, "started_at": started_iso, "finished_at": now_iso(),
+                              "files": _safe_activity(activity_fn, runners[aid], started, finished)}
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / f"{datetime.now():%Y%m%d-%H%M%S}_{task['name']}_{aid}.log"
         log_path.write_text(f"$ {' '.join(cmd[:1] + cmd[1:6])} ...\n\n--- stdout ---\n{result['stdout']}"
                             f"\n--- stderr ---\n{result['stderr']}", encoding="utf-8")
         attempt["log"] = str(log_path)
 
+        def record():
+            if pending_sample is None:
+                return
+            after = _safe_snapshot(snapshot_fn, quota_id) or {"status": "unavailable", "buckets": {}}
+            sample = usage.build_sample(task=task["name"], agent=aid, runner=runners[aid], quota_agent=quota_id,
+                                        before=pending_sample["before"], after=after, attempt=attempt,
+                                        started_at=pending_sample["started_at"],
+                                        finished_at=pending_sample["finished_at"],
+                                        files_touched=pending_sample["files"])
+            usage.append(data_dir / "relay" / "usage_samples.jsonl", sample)
+            attempt["usage_sample"] = sample["status"]
+
         if succeeded(result, task, started):
             attempt["result"] = "success"
+            record()
             run["attempts"].append(attempt)
             run["outcome"], run["agent"] = "success", aid
             echo(f"✓ {aid} 完成（{result['seconds']} 秒）")
@@ -277,6 +304,7 @@ def run_task(task: dict, agents: dict, runners: dict, cfg: dict, data_dir: Path,
 
         if model_missing(result):
             attempt["result"] = "model_missing"
+            record()
             run["attempts"].append(attempt)
             echo(f"✗ {aid} 的模型 {runners[aid].get('model', '')} 不存在或沒有權限，換下一位。"
                  "請執行 cue models 檢查 runners.json。")
@@ -295,6 +323,7 @@ def run_task(task: dict, agents: dict, runners: dict, cfg: dict, data_dir: Path,
             attempt["result"] = "permission"
         else:
             attempt["result"] = "failed"
+        record()
         run["attempts"].append(attempt)
         reason = {"timeout": f"超過 {task['timeout_minutes']} 分鐘",
                   "permission": "需要的工具權限在無人模式下被拒絕",
@@ -321,6 +350,24 @@ def run_task(task: dict, agents: dict, runners: dict, cfg: dict, data_dir: Path,
     return run
 
 
+def _safe_snapshot(snapshot_fn, quota_id):
+    if snapshot_fn is None:
+        return None
+    try:
+        return snapshot_fn(quota_id)
+    except Exception as exc:  # noqa: BLE001 — 量測失敗不能影響接力
+        return {"status": "unavailable", "buckets": {}, "error": str(exc)}
+
+
+def _safe_activity(activity_fn, runner: dict, t0: float, t1: float):
+    if activity_fn is None:
+        return None
+    try:
+        return activity_fn(usage.platform_of(runner), t0, t1)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def next_reset(task: dict, agents: dict, runners: dict) -> str | None:
     times = []
     for aid in task["order"]:
@@ -342,7 +389,8 @@ def load_runners_file(path: Path) -> dict:
         raise ConfigError(f"{path.name} 格式錯誤：{exc}") from exc
 
 
-def main(argv: list[str], *, root: Path, get_agents, recheck_agent=None, load_json=None) -> int:
+def main(argv: list[str], *, root: Path, get_agents, recheck_agent=None, load_json=None,
+         snapshot_fn=None, activity_fn=None) -> int:
     ap = argparse.ArgumentParser(prog="cue relay", description="依額度接力執行 relay.json 裡的任務")
     ap.add_argument("task", nargs="?", help="任務名稱")
     ap.add_argument("--config", default=str(root / "relay.json"), help="任務設定檔（預設 relay.json）")
@@ -381,7 +429,7 @@ def main(argv: list[str], *, root: Path, get_agents, recheck_agent=None, load_js
             print(f"任務 {args.task}　{now_utc().astimezone():%m/%d %H:%M}")
             agents = get_agents(task["order"], runners)
             run = run_task(task, agents, runners, cfg, root / "data", dry_run=args.dry_run,
-                           recheck=recheck_agent)
+                           recheck=recheck_agent, snapshot_fn=snapshot_fn, activity_fn=activity_fn)
     except ConfigError as exc:
         print(f"設定錯誤：{exc}")
         return EXIT_CONFIG
