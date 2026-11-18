@@ -1,6 +1,6 @@
 ---
 name: cuesheet
-description: 派工前先看額度。要把工作交給 Codex（Sol gpt-6.1-sol、Luna gpt-6-luna）、agy／Gemini（Argon、Flash）或其他本機 AI 代理之前，或使用者問「還剩多少額度」「該用哪個模型」「誰還有額度」時使用。執行 CueSheet 讀三端（Claude Code、Codex、agy）的即時額度，依剩餘量選代理。
+description: 派工前先看額度。要把工作交給 Codex（Sol、Luna）、agy／Gemini（Argon、Flash）或其他本機 AI 代理之前，或使用者問「還剩多少額度」「該用哪個模型」「誰還有額度」時使用。執行 CueSheet 讀三端（Claude Code、Codex、agy）的即時額度，依剩餘量選代理。
 ---
 
 # CueSheet：派工前看額度
@@ -27,7 +27,7 @@ python "{{CUESHEET_HOME}}\cue.py" --max-age 600 --json
 | 發散、討論、第二意見 | `argon`（agy `gemini-4-argon-medium`） | `sol` |
 | 整合、寫檔、最後判斷 | `claude`（主控自己） | 先告訴使用者 |
 
-替補只找同等級的模型：Claude Opus 5.5 medium、Sol（Codex `gpt-6.1-sol` medium）、Argon medium。三者互為替補。
+替補只找同等級的模型：Claude Opus 5.5 medium、Sol（Codex，模型以 runners.json 為準）medium、Argon medium。三者互為替補。
 
 規則：
 - Flash 不當任何代理的替補。它只接本來就適合它的簡單工作；別人額度不夠時，不要降級改派 Flash。

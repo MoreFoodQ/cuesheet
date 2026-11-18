@@ -14,9 +14,9 @@
     },
     {
       "id": "sol",
-      "label": "Sol（Codex gpt-6.1-sol）",
+      "label": "Sol（Codex）",
       "provider": "codex",
-      "models": ["gpt-6.1-sol"],
+      "models": ["gpt-6.2-sol", "gpt-6.1-sol"],
       "buckets": ["codex.5h", "codex.weekly"],
       "note": "與 Codex 其他模型共用 codex 這組額度"
     },
