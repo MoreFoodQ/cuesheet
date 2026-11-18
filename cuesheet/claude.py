@@ -73,4 +73,23 @@ def collect(cfg: dict, timeout: float) -> dict:
         res = _new()
         res["error"] = f"get_usage 回傳錯誤：{body.get('error') or body}"
         return res
-    return parse(body.get("response") or {})
+    res = parse(body.get("response") or {})
+    if res["status"] != "ok" and not res["plan"] and logged_out(exe, timeout):
+        res["error"] = ("Claude Code CLI 沒有登入（登入過期）。請在終端機執行 claude，"
+                        "再輸入 /login 重新登入；登入前接力也派不到 Claude。")
+    return res
+
+
+def logged_out(exe: str, timeout: float) -> bool:
+    """`claude auth status` 回報 loggedIn=false 時為 True；讀不到就當作不確定（False）。"""
+    import json
+    import subprocess
+
+    from .common import CREATE_NO_WINDOW
+    try:
+        done = subprocess.run([exe, "auth", "status"], capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", timeout=min(timeout, 30), stdin=subprocess.DEVNULL,
+                              creationflags=CREATE_NO_WINDOW)
+        return json.loads(done.stdout).get("loggedIn") is False
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return False

@@ -53,6 +53,12 @@ def resolve_runner(rid: str, r: dict) -> dict:
     return {**platform_runner(r["platform"], r["model"], r.get("effort")), **r}
 
 
+# 沒有登入或登入過期（2026-11-18 實測 Claude Code：OAuth 過期時 -p 直接失敗）
+AUTH_PATTERNS = re.compile(
+    r"Failed to authenticate|OAuth session expired|Please run /login|not logged in|Invalid API key"
+    r"|authentication required|unauthorized",
+    re.IGNORECASE)
+
 # 模型不存在或沒有權限（2026-11-14 實測三家的訊息）
 MODEL_PATTERNS = re.compile(
     r"issue with the selected model|unrecognized_model|model_not_found|model is not supported"
@@ -189,6 +195,11 @@ def hit_quota(result: dict) -> bool:
     return bool(QUOTA_PATTERNS.search(result["stdout"][-20000:] + "\n" + result["stderr"][-20000:]))
 
 
+def auth_failed(result: dict) -> bool:
+    return result["exit_code"] != 0 and bool(
+        AUTH_PATTERNS.search(result["stdout"][-5000:] + "\n" + result["stderr"][-5000:]))
+
+
 def model_missing(result: dict) -> bool:
     return result["exit_code"] != 0 and bool(
         MODEL_PATTERNS.search(result["stdout"][-5000:] + "\n" + result["stderr"][-5000:]))
@@ -301,6 +312,14 @@ def run_task(task: dict, agents: dict, runners: dict, cfg: dict, data_dir: Path,
             run["outcome"], run["agent"] = "success", aid
             echo(f"✓ {aid} 完成（{result['seconds']} 秒）")
             return run
+
+        if auth_failed(result):
+            attempt["result"] = "auth"
+            record()
+            run["attempts"].append(attempt)
+            echo(f"✗ {aid} 的 CLI 沒有登入或登入過期，換下一位。請在終端機執行 {runners[aid].get('exe', aid)} 重新登入。")
+            prev = aid
+            continue
 
         if model_missing(result):
             attempt["result"] = "model_missing"
