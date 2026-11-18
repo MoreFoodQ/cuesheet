@@ -22,7 +22,9 @@ To check CLI versions, CueSheet runs `claude --version`, `codex --version`, and 
 
 Each process is stopped once it has answered. The CLIs contact their own services with their own sign-in.
 
-CueSheet's own network requests are limited to reading public version numbers from the npm registry (`registry.npmjs.org/-/package/@openai/codex/dist-tags` and `@anthropic-ai/claude-code`). No account data is sent.
+To check CLI versions, CueSheet reads public version numbers from the npm registry (`registry.npmjs.org/-/package/@openai/codex/dist-tags` and `@anthropic-ai/claude-code`). No account data is sent.
+
+`cue rank` and `cue boards` also download public leaderboard data, at most once a day: the Hugging Face datasets API for `lmarena-ai/leaderboard-dataset`, `epoch.ai/data/benchmark_data.zip`, OpenRouter's daily export (`openrouter.ai/api/v1/datasets/exports/`), and `models.dev/api.json`. These requests carry no account data. The files are stored in `data/boards/`, which Git ignores.
 
 ## What CueSheet reads
 

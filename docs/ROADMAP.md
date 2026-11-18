@@ -1,6 +1,6 @@
 # 規劃：榜單聚合、等級配置與更新追蹤
 
-狀態：第二版（2026-11-18），第一版經 Gemini 4 Hydrogen（high）審查後修訂。第一階段已完成（v0.5.0）。
+狀態：第二版（2026-11-18），第一版經 Gemini 4 Hydrogen（high）審查後修訂。第一階段已完成（v0.5.0），第二階段已完成（v0.6.0）。
 
 ## 要回答的問題
 
@@ -108,7 +108,10 @@
 - 版本檢查連跑五次，不觸發安裝、不卡住、不花額度；某個 CLI 不存在時只影響它自己那一項。
 - 用假代理模擬五種情況（正常、跨重置、舊快照、撞上限、並行），樣本標記都正確；實跑一次接力後多一筆樣本。
 
-### 第二階段：免金鑰榜單、名稱對照與 `cue rank`
+### 第二階段：免金鑰榜單、名稱對照與 `cue rank`（已完成，v0.6.0）
+
+實際做法：必要來源為 Arena Agent、Epoch（ECI 與依強度分列的 CursorBench、SciCode、CritPt）、OpenRouter（GPQA Diamond）、models.dev。名稱對照以固定規則為主，`model_map.json` 只記例外。LiveBench 與 Terminal-Bench 兩個選用來源還沒做（都要解析網頁，較脆弱）。新模型（例如 GPT-6.2 Sol）在這些榜上要過幾天才有，所以第三階段的 AA 仍然重要。
+
 
 1. `cue boards --refresh`：抓 Arena、Epoch、OpenRouter、models.dev（必要），LiveBench、Terminal-Bench（選用，可關閉）。每個來源寫自己的快取檔，附抓取時間、榜單日期、狀態、出處。
 2. `model_map.json` 與覆寫檔。

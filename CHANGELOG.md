@@ -2,6 +2,15 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-11-18
+
+### Added
+
+- `cue rank <model> [--effort]`: one table per leaderboard with the baseline, higher-scoring models, close models, cost compared with the baseline, and whether each model is configured, available on a platform, or outside your subscriptions. When a leaderboard lacks the requested effort, the nearest effort is shown and labeled. A summary lists models that are as good or better and cheaper.
+- `cue boards [--refresh]`: no-key leaderboard and price data from LMArena (Arena Agent), Epoch AI (ECI, CursorBench, SciCode, CritPt), OpenRouter (GPQA Diamond), and models.dev, cached daily in `data/boards/`. A failing source keeps its last data and is marked as old.
+- `model_map.json` and optional `model_map.local.json` for name exceptions and names to ignore.
+- The relay hands over when a CLI is not logged in, and the Claude quota check says so plainly.
+
 ## [0.5.0] - 2026-11-18
 
 ### Added
@@ -69,6 +78,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 - Claude Code skill and `install-skill.ps1`.
 - Unit tests on recorded CLI responses and a GitHub Actions workflow for Windows and Linux.
 
+[0.6.0]: https://github.com/MoreFoodQ/cuesheet/releases/tag/v0.6.0
 [0.5.0]: https://github.com/MoreFoodQ/cuesheet/releases/tag/v0.5.0
 [0.4.1]: https://github.com/MoreFoodQ/cuesheet/releases/tag/v0.4.1
 [0.4.0]: https://github.com/MoreFoodQ/cuesheet/releases/tag/v0.4.0

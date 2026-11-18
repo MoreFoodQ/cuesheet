@@ -221,6 +221,52 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 - 無人模式下沒有人能按「允許」，需要核准的工具會被自動拒絕。`agy` 被拒絕時結束碼仍是 0，`cue relay` 會從錯誤輸出辨認出來，記成權限問題。只需要讀寫檔案的任務最穩。
 - 排程只在你登入 Windows 時執行，因為三家 CLI 的登入狀態都存在你的使用者帳號下。
 
+## 榜單比較（cue rank）
+
+`cue rank` 回答「我用的模型在各榜幾分？有沒有同等級或更強、但更省的？我能不能用？」。
+
+```powershell
+.\cue.ps1 rank opus                    # Opus（沒寫強度時用接力設定的強度，否則 medium）
+.\cue.ps1 rank opus --effort high
+.\cue.ps1 rank gemini-4-argon-medium    # agy 的模型 id 本身帶強度
+.\cue.ps1 rank hydrogen --all           # 也列出你訂閱裡沒有的模型
+.\cue.ps1 rank opus --margin 5          # 比基準低 5 分以內都算相近（預設 3）
+.\cue.ps1 boards --refresh              # 重抓榜單資料
+```
+
+每個榜一張表，不同榜的分數不相加、不換算。每張表列出：
+
+- 基準模型（★）、分數更高的（↑）、分數略低但在範圍內的（≈）。
+- 成本，以及和基準相比多貴或多省。成本的定義每個榜不同，標在表頭。
+- 你能不能用：`已設定 <代理>，<額度狀態>`、`平台有（<平台>），未設定`、`平台有，但沒有這個強度`、`無訂閱`。
+- 出處與資料日期。
+
+榜上沒有指定的推理強度時（例如 Arena 沒有 Opus 5.5 medium），改用最接近的強度對照，表頭會寫「⚠ 沒有 medium，改用 high 對照」。榜單本身不分強度時也會標明。
+
+最後有兩個彙總：在哪些榜上「同等或更強、而且更省」的模型（依榜單的每題成本，不是訂閱額度），以及 API 牌價。
+
+目前的資料來源（都不需要帳號或金鑰）：
+
+| 榜單 | 測什麼 | 分強度 | 成本 | 出處 |
+|---|---|---|---|---|
+| Arena Agent | 真實使用者 Agent 任務的相對改善率 | 有 | 每題成本中位數 | LMArena（CC BY 4.0） |
+| Epoch Capabilities Index | 跨多個基準的綜合能力 | 沒有 | 沒有 | Epoch AI（CC BY 4.0） |
+| CursorBench（Epoch 彙整） | 在 Cursor 裡完成真實程式工作 | 有 | 每題成本 | Epoch AI（CC BY 4.0） |
+| SciCode（Epoch 彙整） | 科學計算程式 | 有 | 沒有 | Epoch AI（CC BY 4.0） |
+| CritPt（Epoch 彙整） | 物理研究等級的推理題 | 有 | 沒有 | Epoch AI（CC BY 4.0） |
+| GPQA Diamond（OpenRouter） | 研究所等級科學選擇題 | 沒有 | 每題成本 | OpenRouter（CC BY 4.0） |
+| API 牌價 | 每百萬 token 價格 | | | models.dev（MIT） |
+
+榜單資料一天更新一次，存在 `data/boards/`，不進 Git。某個來源抓不到時，保留上一次的資料並標「舊資料」，其他來源照常更新。`cue boards` 列出每個來源的狀態。
+
+剛推出的模型通常要過幾天才會出現在這些榜上（2026-11-18：GPT-6.2 Sol 還沒有）。Artificial Analysis 涵蓋得最快，之後會用使用者自己的免費金鑰接上（見 `docs/ROADMAP.md`）。
+
+各榜的模型名稱用固定規則對齊：轉小寫、`.` 和空白換成 `-`、把括號或底線後面的推理強度拆出來，例如 `Claude Opus 5.5 (Max)`、`claude-opus-5-5_medium`、`anthropic/claude-opus-5.5` 都對到 `claude-opus-5-5`。規則對不上的例外寫在 `model_map.json`；自己的覆寫或要忽略的名稱寫在 `model_map.local.json`（不進 Git），格式相同：
+
+```json
+{"aliases": {"arena_agent": {"hy4": "some-model-key"}}, "ignore": {"*": ["model-to-hide"]}}
+```
+
 ## 額度怎麼讀取
 
 每個代理都透過它自己 CLI 的唯讀指令查詢，不會開始模型回合，也不會消耗額度。CueSheet 不讀取、不儲存、不傳送任何登入憑證，登入由各 CLI 自己處理。CueSheet 會讀寫哪些東西，列在 [SECURITY.md](SECURITY.md)。

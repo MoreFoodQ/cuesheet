@@ -27,6 +27,8 @@ python "{{CUESHEET_HOME}}\cue.py" --max-age 600 --json
 | 發散、討論、第二意見 | `argon`（agy `gemini-4-argon-medium`） | `sol` |
 | 整合、寫檔、最後判斷 | `claude`（主控自己） | 先告訴使用者 |
 
+要比較模型能力和成本時，用 `python "{{CUESHEET_HOME}}\cue.py" rank <模型> --effort <強度>`：每個榜一張表，列出同等級或更強、更省、使用者能不能用。不同榜的分數不能相加，回報時要說是哪個榜。
+
 替補只找同等級的模型：Claude Opus 5.5 medium、Sol（Codex，模型以 runners.json 為準）medium、Argon medium。三者互為替補。
 
 規則：

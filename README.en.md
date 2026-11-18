@@ -221,6 +221,52 @@ Things to keep in mind when writing tasks:
 - Nobody is there to approve tools, so tools that need approval are denied. `agy` still exits with code 0 when this happens; `cue relay` recognizes the message and records a permission problem. Tasks that only read and write files are the most reliable.
 - Scheduled jobs run only while you are signed in to Windows, because each CLI keeps its sign-in under your user account.
 
+## Comparing models (cue rank)
+
+`cue rank` answers: where does my model stand on each leaderboard, which models are as good or better and cost less, and can I use them?
+
+```powershell
+.\cue.ps1 rank opus                    # Opus (effort from runners.json, or medium)
+.\cue.ps1 rank opus --effort high
+.\cue.ps1 rank gemini-4-argon-medium    # agy model ids include the effort
+.\cue.ps1 rank hydrogen --all           # also list models outside your subscriptions
+.\cue.ps1 rank opus --margin 5          # count models up to 5 points below as close (default 3)
+.\cue.ps1 boards --refresh              # fetch leaderboard data again
+```
+
+Each leaderboard gets its own table; scores from different leaderboards are never added or converted. Each table shows:
+
+- The baseline (★), higher-scoring models (↑), and models slightly below but within range (≈).
+- Cost, and how much more or less it is than the baseline. Each leaderboard defines cost differently; the definition is in the table header.
+- Whether you can use it: `已設定 <agent>，<quota>` (configured), `平台有（<platform>），未設定` (on the platform, not configured), `平台有，但沒有這個強度` (effort not offered), or `無訂閱` (not in your subscriptions).
+- Source and data date.
+
+When a leaderboard lacks the requested effort (Arena has no Opus 5.5 medium, for example), the nearest effort is used and the header says so. Leaderboards that do not split by effort are marked too.
+
+Two summaries follow: models that are as good or better and cheaper on some leaderboards (by the leaderboard's cost per task, not subscription quota), and API list prices.
+
+Current sources (no account or key needed):
+
+| Leaderboard | Measures | Per effort | Cost | Source |
+|---|---|---|---|---|
+| Arena Agent | Relative improvement on real user agent tasks | Yes | Median cost per task | LMArena (CC BY 4.0) |
+| Epoch Capabilities Index | Combined capability across benchmarks | No | None | Epoch AI (CC BY 4.0) |
+| CursorBench (via Epoch) | Real coding work in Cursor | Yes | Cost per task | Epoch AI (CC BY 4.0) |
+| SciCode (via Epoch) | Scientific programming | Yes | None | Epoch AI (CC BY 4.0) |
+| CritPt (via Epoch) | Research-level physics reasoning | Yes | None | Epoch AI (CC BY 4.0) |
+| GPQA Diamond (OpenRouter) | Graduate-level science questions | No | Cost per task | OpenRouter (CC BY 4.0) |
+| API list prices | Price per million tokens | | | models.dev (MIT) |
+
+Leaderboard data is refreshed once a day and stored in `data/boards/`, which Git ignores. If a source fails, its last data is kept and marked as old; the other sources still update. `cue boards` shows each source's status.
+
+New models usually take a few days to appear on these leaderboards (on 2026-11-18, GPT-6.2 Sol was not listed yet). Artificial Analysis covers new models fastest and will be added with the user's own free API key (see `docs/ROADMAP.md`).
+
+Model names are aligned with fixed rules: lowercase, `.` and spaces become `-`, and the effort in parentheses or after an underscore is split off, so `Claude Opus 5.5 (Max)`, `claude-opus-5-5_medium`, and `anthropic/claude-opus-5.5` all become `claude-opus-5-5`. Exceptions go in `model_map.json`; your own overrides and names to hide go in `model_map.local.json` (ignored by Git), in the same format:
+
+```json
+{"aliases": {"arena_agent": {"hy4": "some-model-key"}}, "ignore": {"*": ["model-to-hide"]}}
+```
+
 ## How quota is read
 
 Each agent is queried through a read-only command of its own CLI. These commands do not start a model turn and do not use quota. CueSheet does not read, store, or send credentials; each CLI handles its own sign-in. [SECURITY.md](SECURITY.md) lists everything CueSheet reads and writes.
