@@ -164,13 +164,13 @@ The models the relay uses are listed in `runners.json` in the repository. The de
 |---|---|---|---|---|
 | 1 | `claude` | Claude Code | `claude-opus-5-5` | Read and write files in the working folder; shell commands that need approval are denied |
 | 2 | `sol` | Codex CLI | `gpt-6.2-sol` | Run commands in a sandbox that can only write the working folder |
-| 3 | `hydrogen` | Antigravity `agy` | `gemini-4-hydrogen-high` | Read and write files; shell commands are denied |
+| 3 | `neon` | Antigravity `agy` | `gemini-4-neon-medium` | Read and write files; shell commands are denied |
 
 The three draw on separate quotas, so when one runs out the other two can still take over.
 
-The third slot used to be Argon medium (AA 47.6). Since 2026-11-18 it is Hydrogen high: AA 50.8, Arena Agent 14.9% (Argon high: 10.0%), CursorBench 54.3% (Argon medium: 52.8%), at $1.87 per task, less than half of Argon medium ($4.31). Hydrogen draws only on the Gemini group quota, not Argon's own weekly quota, but it shares that group with Flash. Use Hydrogen at high; at medium it scores 41.2.
+Since 2026-11-19 the third slot is Neon medium: AA 54.9 (L2) at $1.90 per task. It shares the Gemini group quota with Hydrogen and Flash and has no quota of its own. Neon is new, and so far only AA scores it. Before that, on 2026-11-18, Argon medium (AA 47.6) was replaced by Hydrogen high: AA 50.8, Arena Agent 14.9% (Argon high: 10.0%), CursorBench 54.3% (Argon medium: 52.8%), at $1.87 per task, less than half of Argon medium ($4.31). Hydrogen draws only on the Gemini group quota, not Argon's own weekly quota, but it shares that group with Flash. Use Hydrogen at high; at medium it scores 41.2.
 
-`runners.json` also defines `argon` (agy `gemini-4-argon-medium`), `luna` (Codex `gpt-6-luna`), `flash` (agy `gemini-3.8-flash-medium`), and `carbon` (agy `gemini-4-carbon-medium`), which are not in the default order: Luna shares the Codex quota with Sol, and Flash cannot do the work of the other three. Add them to a task's `order`, or let difficulty-based picking consider them.
+`runners.json` also defines `hydrogen` (agy `gemini-4-hydrogen-high`), `argon` (agy `gemini-4-argon-medium`), `luna` (Codex `gpt-6-luna`), `flash` (agy `gemini-3.8-flash-medium`), and `carbon` (agy `gemini-4-carbon-medium`), which are not in the default order: Luna shares the Codex quota with Sol, and Flash cannot do the work of the other three. Add them to a task's `order`, or let difficulty-based picking consider them.
 
 `carbon` is marked optional (`"optional": true`) because not every account has Gemini 4 Carbon. Without it, `cue models` shows `帳號沒有（選用）` (not in your account), with no warning or replacement suggestion, and difficulty-based picking leaves it out. With it, its AA index of 58.3 (L1) puts it first for hard tasks. Carbon follows the Gemini group quota for now; if it has a quota of its own, `cue` will list an unwatched quota under "needs attention", and you can add an agent for it in `agents.json`.
 
@@ -192,11 +192,11 @@ Platforms add, rename, and retire models over time. CueSheet keeps what it reads
 
 ```json
 {
-  "default_order": ["claude", "sol", "hydrogen"],
+  "default_order": ["claude", "sol", "neon"],
   "runners": {
     "claude": {"platform": "claude", "model": "claude-opus-5-5", "effort": "medium", "family": "opus"},
     "sol": {"platform": "codex", "model": "gpt-6.2-sol", "effort": "medium", "family": "sol"},
-    "hydrogen": {"platform": "agy", "model": "gemini-4-hydrogen-high", "effort": "high", "family": "hydrogen"},
+    "neon": {"platform": "agy", "model": "gemini-4-neon-medium", "effort": "medium", "family": "neon"},
     "carbon": {"platform": "agy", "model": "gemini-4-carbon-medium", "effort": "medium", "family": "carbon",
                "optional": true, "quota_agent": "hydrogen"}
   }
@@ -355,7 +355,7 @@ Last tested with Claude Code 2.1.311, codex-cli 0.170.0, and agy 1.5.11 on 2026-
 
 ## Configuration
 
-`agents.json` maps agents to quota windows and sets the low and exhausted thresholds. The included agents are `claude`, `sol`, `luna`, `hydrogen`, `argon`, `flash`, and `agy-3p`. Windows listed under `buckets` must exist in the provider's output; windows under `optional_buckets` count only when present.
+`agents.json` maps agents to quota windows and sets the low and exhausted thresholds. The included agents are `claude`, `sol`, `luna`, `neon`, `hydrogen`, `argon`, `flash`, and `agy-3p`. Windows listed under `buckets` must exist in the provider's output; windows under `optional_buckets` count only when present.
 
 `runners.json` sets the relay models and the default order; see "Changing models" above.
 

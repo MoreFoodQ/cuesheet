@@ -205,7 +205,7 @@ class RelayModelTest(unittest.TestCase):
     def test_repo_runners_file_is_valid(self):
         base = json.loads((ROOT / "runners.json").read_text(encoding="utf-8"))
         runners = relay.runners_from({}, base)
-        self.assertEqual(base["default_order"], ["claude", "sol", "hydrogen"])
+        self.assertEqual(base["default_order"], ["claude", "sol", "neon"])
         for rid in base["default_order"]:
             self.assertIn(rid, runners)
             self.assertFalse(base["runners"][rid].get("optional"))  # 預設順序不能放選用代理

@@ -144,7 +144,7 @@ class RelayTest(unittest.TestCase):
 
     def test_default_order(self):
         task = relay.load_task({"tasks": {"x": {"prompt": "p", "workdir": str(self.dir)}}}, "x", self.dir)
-        self.assertEqual(task["order"], ["claude", "sol", "hydrogen"])
+        self.assertEqual(task["order"], ["claude", "sol", "neon"])
         task = relay.load_task({"default_order": ["argon"], "tasks": {"x": {"prompt": "p", "workdir": str(self.dir)}}},
                                "x", self.dir)
         self.assertEqual(task["order"], ["argon"])

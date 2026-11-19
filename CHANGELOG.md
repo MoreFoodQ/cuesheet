@@ -2,6 +2,16 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.10.0] - 2026-11-19
+
+### Changed
+
+- The default relay order is now Claude Opus 5.5 medium → GPT-6.2 Sol medium → Gemini 4 Neon medium. Neon medium (AA 54.9, $1.90 per task) scores higher than Hydrogen high (50.8, $1.87) at about the same cost and draws on the same Gemini group quota. Hydrogen stays available as a runner. Neon is new; so far only AA scores it.
+
+### Added
+
+- `neon` agent in `agents.json` and runner in `runners.json`.
+
 ## [0.9.0] - 2026-11-18
 
 ### Changed

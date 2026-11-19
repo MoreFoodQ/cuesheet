@@ -29,6 +29,14 @@
       "note": "與 Codex 其他模型共用 codex 這組額度"
     },
     {
+      "id": "neon",
+      "label": "Gemini 4 Neon（agy）",
+      "provider": "gemini",
+      "models": ["gemini-4-neon-low", "gemini-4-neon-medium", "gemini-4-neon-high", "gemini-4-neon-xhigh"],
+      "buckets": ["gemini-5h", "gemini-weekly"],
+      "note": "與 Hydrogen、Flash 共用 Gemini 組額度"
+    },
+    {
       "id": "hydrogen",
       "label": "Gemini 4 Hydrogen（agy）",
       "provider": "gemini",

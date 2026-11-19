@@ -2,7 +2,7 @@
   "default_order": [
     "claude",
     "sol",
-    "hydrogen"
+    "neon"
   ],
   "runners": {
     "claude": {
@@ -16,6 +16,12 @@
       "model": "gpt-6.2-sol",
       "effort": "medium",
       "family": "sol"
+    },
+    "neon": {
+      "platform": "agy",
+      "model": "gemini-4-neon-medium",
+      "effort": "medium",
+      "family": "neon"
     },
     "hydrogen": {
       "platform": "agy",

@@ -164,13 +164,13 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 |---|---|---|---|---|
 | 1 | `claude` | Claude Code | `claude-opus-5-5` | 讀寫工作資料夾裡的檔案；需要核准的 shell 指令會被拒絕 |
 | 2 | `sol` | Codex CLI | `gpt-6.2-sol` | 在沙盒裡執行指令，只能寫工作資料夾 |
-| 3 | `hydrogen` | Antigravity `agy` | `gemini-4-hydrogen-high` | 讀寫檔案；shell 指令會被拒絕 |
+| 3 | `neon` | Antigravity `agy` | `gemini-4-neon-medium` | 讀寫檔案；shell 指令會被拒絕 |
 
 三家的額度互不相干，所以一家用完，另外兩家還能接手。
 
-第三棒原本是 Argon medium（AA 47.6）。2026-11-18 起改成 Hydrogen high：AA 50.8、Arena Agent 14.9%（Argon high 只有 10.0%）、CursorBench 54.3%（Argon medium 52.8%），每題成本 $1.87，不到 Argon medium（$4.31）的一半。Hydrogen 只扣 Gemini 組額度，不扣 Argon 專屬週額度，但會和 Flash 搶同一組。Hydrogen 要用 high，medium 只有 41.2。
+第三棒 2026-11-19 起是 Neon medium：AA 54.9（L2），每題成本 $1.90，和 Hydrogen、Flash 共用 Gemini 組額度，沒有自己的額度。Neon 剛推出，目前只有 AA 有分數。在這之前，2026-11-18 從 Argon medium（AA 47.6）換成 Hydrogen high：AA 50.8、Arena Agent 14.9%（Argon high 只有 10.0%）、CursorBench 54.3%（Argon medium 52.8%），每題成本 $1.87，不到 Argon medium（$4.31）的一半。Hydrogen 只扣 Gemini 組額度，不扣 Argon 專屬週額度，但會和 Flash 搶同一組。Hydrogen 要用 high，medium 只有 41.2。
 
-`runners.json` 另外有 `argon`（agy `gemini-4-argon-medium`）、`luna`（Codex `gpt-6-luna`）、`flash`（agy `gemini-3.8-flash-medium`）和 `carbon`（agy `gemini-4-carbon-medium`），都不在預設順序裡：Luna 和 Sol 共用 Codex 的額度，Flash 的能力替代不了其他三個。需要的話，在任務的 `order` 裡自己加，或讓依難度自動挑模型時列入候選。
+`runners.json` 另外有 `hydrogen`（agy `gemini-4-hydrogen-high`）、`argon`（agy `gemini-4-argon-medium`）、`luna`（Codex `gpt-6-luna`）、`flash`（agy `gemini-3.8-flash-medium`）和 `carbon`（agy `gemini-4-carbon-medium`），都不在預設順序裡：Luna 和 Sol 共用 Codex 的額度，Flash 的能力替代不了其他三個。需要的話，在任務的 `order` 裡自己加，或讓依難度自動挑模型時列入候選。
 
 `carbon` 標成選用（`"optional": true`），因為不是每個帳號都有 Gemini 4 Carbon。帳號沒有時，`cue models` 顯示「帳號沒有（選用）」，不會提醒也不會建議替換，依難度自動挑時也會排除。帳號有的話，它的 AA 指數 58.3（L1），難的任務會優先派給它。Carbon 的額度目前先看 Gemini 組；如果它有自己的額度，`cue` 的「需要注意」會提示有沒人在看的額度，請在 `agents.json` 加一個代理。
 
@@ -192,11 +192,11 @@ copy relay.example.json relay.json        # 第一次使用：複製範例再編
 
 ```json
 {
-  "default_order": ["claude", "sol", "hydrogen"],
+  "default_order": ["claude", "sol", "neon"],
   "runners": {
     "claude": {"platform": "claude", "model": "claude-opus-5-5", "effort": "medium", "family": "opus"},
     "sol": {"platform": "codex", "model": "gpt-6.2-sol", "effort": "medium", "family": "sol"},
-    "hydrogen": {"platform": "agy", "model": "gemini-4-hydrogen-high", "effort": "high", "family": "hydrogen"},
+    "neon": {"platform": "agy", "model": "gemini-4-neon-medium", "effort": "medium", "family": "neon"},
     "carbon": {"platform": "agy", "model": "gemini-4-carbon-medium", "effort": "medium", "family": "carbon",
                "optional": true, "quota_agent": "hydrogen"}
   }
@@ -355,7 +355,7 @@ Codex app server 另有一個 `account/rateLimitResetCredit/consume` 方法，�
 
 ## 設定
 
-`agents.json` 設定代理和時間窗的對應，以及偏低、用完的門檻。內建的代理是 `claude`、`sol`、`luna`、`hydrogen`、`argon`、`flash`、`agy-3p`。列在 `buckets` 的時間窗必須存在；列在 `optional_buckets` 的時間窗有出現才計算。
+`agents.json` 設定代理和時間窗的對應，以及偏低、用完的門檻。內建的代理是 `claude`、`sol`、`luna`、`neon`、`hydrogen`、`argon`、`flash`、`agy-3p`。列在 `buckets` 的時間窗必須存在；列在 `optional_buckets` 的時間窗有出現才計算。
 
 `runners.json` 設定接力用的模型與預設順序，格式見上方「換模型」一節。
 

@@ -1,5 +1,5 @@
 {
-  "default_order": ["claude", "sol", "hydrogen"],
+  "default_order": ["claude", "sol", "neon"],
   "tasks": {
     "daily-notes": {
       "description": "整理今天新增的筆記，寫成摘要",
