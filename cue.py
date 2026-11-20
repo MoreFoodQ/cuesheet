@@ -46,6 +46,39 @@ def collect(names: list[str], cfg: dict, timeout: float) -> dict:
         return {n: f.result() for n, f in futures.items()}
 
 
+FALLBACK_HOURS = 24  # 即時查詢失敗時，上次成功的結果在幾小時內可以拿來頂替
+
+
+def fall_back_to_previous(providers: dict, previous: dict | None, now=None) -> dict:
+    """即時查詢失敗（unavailable）的端，改用上一份 latest.json 裡成功的結果，標成舊快照。
+
+    已過重置時間的額度桶改成未知，不拿舊數字冒充。上一份本身也是頂替來的，就沿用它最初的查詢時間。
+    """
+    now = now or now_utc()
+    prev_all = (previous or {}).get("providers") or {}
+    out = dict(providers)
+    for name, cur in providers.items():
+        prev = prev_all.get(name)
+        if cur.get("status") != "unavailable" or not prev or prev.get("status") not in ("ok", "stale"):
+            continue
+        observed = parse_iso((prev.get("extra") or {}).get("observed_at") or prev.get("checked_at"))
+        if not observed or now - observed > timedelta(hours=FALLBACK_HOURS) or not prev.get("buckets"):
+            continue
+        buckets = []
+        for b in prev["buckets"]:
+            b = dict(b)
+            reset = parse_iso(b.get("resets_at"))
+            if reset and reset <= now:
+                b["used_percent"] = b["remaining_percent"] = None
+                b["note"] = "上次查詢之後已過重置時間，目前用量未知"
+            buckets.append(b)
+        local = observed.astimezone().strftime("%m/%d %H:%M")
+        out[name] = {**prev, "status": "stale", "checked_at": cur.get("checked_at"), "buckets": buckets,
+                     "extra": {**(prev.get("extra") or {}), "observed_at": observed.isoformat(timespec="seconds")},
+                     "error": f"即時查詢失敗（{cur.get('error')}），改用 {local} 查到的結果"}
+    return out
+
+
 def model_check(cfg: dict, timeout: float) -> dict:
     """即時抓三家模型清單與 CLI 版本，檢查 runners.json，並記錄新模型。"""
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -371,6 +404,7 @@ def main() -> int:
             fut_models = pool.submit(model_check, cfg, args.timeout) if check_models else None
             providers = fut_quota.result()
             model_info = fut_models.result() if fut_models else None
+        providers = fall_back_to_previous(providers, load_json(out_path, None))
         report = {
             "schema_version": SCHEMA_VERSION,
             "generated_at": now_iso(),

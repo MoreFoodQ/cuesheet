@@ -15,7 +15,7 @@ import re
 from datetime import timedelta
 from pathlib import Path
 
-from .common import find_exe, now_iso, now_utc, parse_iso, run_jsonl
+from .common import find_exe, now_iso, now_utc, parse_iso, run_capture, run_jsonl
 
 AGY_FALLBACKS = (r"%LOCALAPPDATA%\agy\bin\agy.exe",)
 NEW_MODEL_DAYS = 7  # 第一次看到後幾天內算「新模型」
@@ -101,19 +101,23 @@ def list_codex(cfg: dict, timeout: float) -> list[dict]:
     return parse_codex_models((reply.get("result") or {}).get("data") or [])
 
 
-def list_agy(cfg: dict, timeout: float) -> list[dict]:
-    import subprocess
-
-    from .common import CREATE_NO_WINDOW
+def list_agy(cfg: dict, timeout: float, attempts: int = 2) -> list[dict]:
     exe = find_exe("agy", tuple(cfg.get("agy_paths", [])) + AGY_FALLBACKS)
     if not exe:
         raise RuntimeError("找不到 agy 執行檔")
-    done = subprocess.run([exe, "models"], capture_output=True, text=True, encoding="utf-8", errors="replace",
-                          timeout=timeout, creationflags=CREATE_NO_WINDOW, stdin=subprocess.DEVNULL)
-    models = parse_agy_models(done.stdout)
-    if not models:
-        raise RuntimeError(f"agy models 沒有輸出模型（exit {done.returncode}）")
-    return models
+    errors = []
+    for _ in range(attempts):  # agy 啟動時會檢查更新，偶爾比較慢，失敗就再試一次
+        try:
+            code, out, err = run_capture([exe, "models"], timeout)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(str(exc))
+            continue
+        models = parse_agy_models(out)
+        if models:
+            return models
+        tail = " / ".join((err or out).strip().splitlines()[-2:])
+        errors.append(f"agy models 沒有輸出模型（exit {code}）{('：' + tail) if tail else ''}")
+    raise RuntimeError("；".join(dict.fromkeys(errors)))
 
 
 LISTERS = {"claude": list_claude, "codex": list_codex, "agy": list_agy}

@@ -2,6 +2,17 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.10.1] - 2026-11-20
+
+### Fixed
+
+- A quota or model check could run far past `--timeout`. On Windows, `subprocess.run` waits for the output pipe to close even after a timeout, so a child process that inherits the pipe (agy, for example, starts a background updater) kept the check waiting. Commands now stop at the timeout, the whole process tree is ended, and CueSheet waits at most 5 seconds for leftover output.
+- agy quota and model list checks retry once when they fail. agy checks for updates on startup, and the first start after an update can be slow.
+
+### Changed
+
+- When a live quota check fails, `cue` shows the last successful result from `data/latest.json` (up to 24 hours old) marked as an old snapshot, with the reason and the time it was read. Windows whose reset time has passed are shown as unknown.
+
 ## [0.10.0] - 2026-11-19
 
 ### Changed

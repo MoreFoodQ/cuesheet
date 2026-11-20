@@ -144,21 +144,79 @@ def run_jsonl(cmd: list[str], messages: list[dict], want, timeout: float) -> dic
             if want(obj):
                 return obj
     finally:
+        kill_tree(proc)
+
+
+PIPE_GRACE = 5.0  # 程序結束後，最多再等幾秒讓輸出讀完
+
+
+def kill_tree(proc: subprocess.Popen) -> None:
+    """連同子程序一起結束。Windows 上 proc.kill() 只殺本體，留下的子程序會一直佔著輸出管線。"""
+    if proc.poll() is not None:
+        return
+    if os.name == "nt":
         try:
-            proc.kill()
-        except OSError:
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True,
+                           timeout=15, creationflags=CREATE_NO_WINDOW, stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.SubprocessError):
             pass
+    try:
+        proc.kill()
+    except OSError:
+        pass
+
+
+class CommandTimeout(TimeoutError):
+    pass
+
+
+def run_capture(cmd: list[str], timeout: float, cwd: str | None = None) -> tuple[int, str, str]:
+    """執行指令並收集輸出，逾時一定會回來。
+
+    subprocess.run(timeout=…) 在 Windows 上逾時後還會無限期等輸出管線關閉；
+    只要有子程序（例如背景更新程序）繼承了管線，就會一直卡住。這裡改成只等程序本身，
+    逾時就結束整個程序樹，程序結束後輸出最多再等 PIPE_GRACE 秒。
+    """
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
+                            cwd=cwd, creationflags=CREATE_NO_WINDOW)
+    chunks: dict[str, list[bytes]] = {"out": [], "err": []}
+
+    def reader(stream, key):
+        for block in iter(lambda: stream.read1(65536), b""):
+            chunks[key].append(block)
+
+    threads = [threading.Thread(target=reader, args=(proc.stdout, "out"), daemon=True),
+               threading.Thread(target=reader, args=(proc.stderr, "err"), daemon=True)]
+    for t in threads:
+        t.start()
+    try:
+        proc.wait(timeout)
+    except subprocess.TimeoutExpired:
+        kill_tree(proc)
+        raise CommandTimeout(f"{timeout:.0f} 秒內沒有結束") from None
+    grace_end = time.monotonic() + PIPE_GRACE
+    for t in threads:
+        t.join(max(0.0, grace_end - time.monotonic()))
+    text = lambda key: b"".join(chunks[key]).decode("utf-8", errors="replace")
+    return proc.returncode, text("out"), text("err")
+
+
+def last_json_line(stdout: str) -> dict | None:
+    for line in reversed(stdout.splitlines()):
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                return json.loads(line)
+            except json.JSONDecodeError:
+                continue
+    return None
 
 
 def run_json(cmd: list[str], timeout: float) -> dict:
     """執行一次性指令，取最後一行 JSON 物件。"""
-    done = subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-        timeout=timeout, creationflags=CREATE_NO_WINDOW, stdin=subprocess.DEVNULL,
-    )
-    for line in reversed(done.stdout.splitlines()):
-        line = line.strip()
-        if line.startswith("{"):
-            return json.loads(line)
-    tail = (done.stderr or done.stdout).strip().splitlines()[-3:]
-    raise RuntimeError(f"沒有 JSON 輸出（exit {done.returncode}）：{' / '.join(tail)}")
+    code, out, err = run_capture(cmd, timeout)
+    obj = last_json_line(out)
+    if obj is not None:
+        return obj
+    tail = (err or out).strip().splitlines()[-3:]
+    raise RuntimeError(f"沒有 JSON 輸出（exit {code}）：{' / '.join(tail)}")

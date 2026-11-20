@@ -10,12 +10,11 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .common import CREATE_NO_WINDOW, find_exe, now_iso
+from .common import find_exe, now_iso, run_capture
 
 DIST_TAGS = "https://registry.npmjs.org/-/package/{pkg}/dist-tags"
 AGY_FALLBACKS = (r"%LOCALAPPDATA%\agy\bin\agy.exe",)
@@ -45,12 +44,10 @@ def installed_version(name: str, cfg: dict, timeout: float = 20) -> str | None:
     if not exe:
         return None
     try:
-        done = subprocess.run([exe, "--version"], capture_output=True, text=True, encoding="utf-8",
-                              errors="replace", timeout=timeout, stdin=subprocess.DEVNULL,
-                              creationflags=CREATE_NO_WINDOW)
-    except (OSError, subprocess.TimeoutExpired):
+        _, out, err = run_capture([exe, "--version"], timeout)
+    except (OSError, TimeoutError):
         return None
-    return fmt_version(parse_version(done.stdout + " " + done.stderr))
+    return fmt_version(parse_version(out + " " + err))
 
 
 def npm_dist_tags(pkg: str, timeout: float = 15) -> dict:

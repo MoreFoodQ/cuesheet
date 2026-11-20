@@ -100,17 +100,27 @@ def parse(out: dict, checked_at=None) -> dict:
     return res
 
 
+ATTEMPTS = 2  # agy 每次啟動都會檢查更新、更新後第一次啟動也比較慢，失敗就再試一次
+
+
 def collect(cfg: dict, timeout: float) -> dict:
     exe = find_exe("agy", tuple(cfg.get("agy_paths", [])) + DEFAULT_PATHS)
     if not exe:
         res = _new()
         res["error"] = "找不到 agy 執行檔"
         return res
-    try:
-        checked_at = now_utc()
-        out = run_json([exe, "-p", "/usage", "--output-format", "json"], timeout)
-    except Exception as exc:  # noqa: BLE001
-        res = _new()
-        res["error"] = f"呼叫 agy 失敗：{exc}"
+    errors = []
+    for _ in range(ATTEMPTS):
+        try:
+            checked_at = now_utc()
+            out = run_json([exe, "-p", "/usage", "--output-format", "json"], timeout)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(str(exc))
+            continue
+        res = parse(out, checked_at)
+        if errors:
+            res["notes"].append(f"第一次查詢失敗（{errors[0]}），重試後成功")
         return res
-    return parse(out, checked_at)
+    res = _new()
+    res["error"] = f"呼叫 agy 失敗（試了 {ATTEMPTS} 次）：{'；'.join(dict.fromkeys(errors))}"
+    return res

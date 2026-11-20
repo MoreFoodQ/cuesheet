@@ -127,7 +127,9 @@ class RelayTest(unittest.TestCase):
         # 真的啟動子程序：用 python 讀標準輸入的提示詞，寫出檔案
         self.task.update(order=["a"], success_file="out.txt")
         self.runners = {"a": {"exe": PY, "stdin": True,
-                              "args": ["-c", "import sys; open('out.txt','w',encoding='utf-8').write(sys.stdin.read())"]}}
+                              # -X utf8：真的 CLI 用 UTF-8 讀標準輸入；不加的話 Python 會照系統編碼（cp950）讀
+                              "args": ["-X", "utf8", "-c",
+                                       "import sys; open('out.txt','w',encoding='utf-8').write(sys.stdin.read())"]}}
         run = relay.run_task(self.task, {"a": agent("ok", 90)}, self.runners, {}, self.dir, echo=lambda *_: None)
         self.assertEqual(run["outcome"], "success")
         self.assertEqual((self.dir / "out.txt").read_text(encoding="utf-8"), "做事")
